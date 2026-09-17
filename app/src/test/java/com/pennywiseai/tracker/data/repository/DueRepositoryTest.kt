@@ -307,6 +307,49 @@ class DueRepositoryTest {
     }
 
     // =========================================================================================
+    // Step 7 — "payment received" notices merge, and only merge
+    // =========================================================================================
+
+    @Test
+    fun `a payment confirmation for a bill nobody has seen writes no row`() = runBlocking {
+        // §20.4 step 7. Inserting here would put a due in Pending whose date is a payment date
+        // and whose amount is an amount paid, and `PlausibleDueSettler` would then settle the
+        // payment against that invention instead of against the statement it really cleared.
+        val result = repository.mergeIntoExisting(paymentConfirmation(), emailMessageId = 7)
+
+        assertNull(result)
+        assertEquals(0, dueDao.rows.size)
+    }
+
+    @Test
+    fun `a payment confirmation lands on the bill it cleared, weeks apart`() = runBlocking {
+        val bill = repository.upsertFromParsed(statement(), emailMessageId = 7)
+
+        // Paid on 4 September against a bill due on 1 October — four weeks, where two readings
+        // of one *bill* would be given two days.
+        val notice = repository.mergeIntoExisting(paymentConfirmation(), emailMessageId = 8)
+
+        assertEquals(bill.dueRowId, notice?.dueRowId)
+        assertFalse(notice!!.created)
+        assertEquals(1, dueDao.rows.size)
+    }
+
+    @Test
+    fun `a payment confirmation changes nothing about the bill`() = runBlocking {
+        val bill = repository.upsertFromParsed(statement(), emailMessageId = 7)
+
+        repository.mergeIntoExisting(paymentConfirmation(), emailMessageId = 8)
+
+        val stored = dueDao.rows.getValue(bill.dueRowId)
+        assertEquals(BigDecimal("4321.50"), stored.amount)
+        assertEquals(LocalDate.of(2026, 10, 1), stored.dueDate)
+        assertEquals(DueStatus.OPEN, stored.status)
+        assertNull(stored.settledTransactionId)
+        // An untouched row is not written, so `updated_at` does not move either.
+        assertTrue(dueDao.updates.isEmpty())
+    }
+
+    // =========================================================================================
     // Fixtures
     // =========================================================================================
 
@@ -323,6 +366,18 @@ class DueRepositoryTest {
         accountLast4 = accountLast4,
         source = source
     )
+
+    /**
+     * CRED's "payment successful" mail for the same card (spec 12 §12.6 C2).
+     *
+     * The amount is the amount paid — the user paid the minimum — and the date is the day it
+     * was paid, not a due date. Neither may reach the row.
+     */
+    private fun paymentConfirmation(
+        amount: BigDecimal? = BigDecimal("900.00"),
+        paidOn: LocalDate = LocalDate.of(2026, 9, 4)
+    ): ParsedDue = statement(amount = amount, dueDate = paidOn, source = "CRED")
+        .copy(paymentConfirmed = true)
 
     private fun credNotice(
         amount: BigDecimal? = BigDecimal("4321.50"),

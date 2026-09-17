@@ -9,7 +9,7 @@ blocks the build.
 
 - **Baseline:** upstream `sarim2000/pennywiseai-tracker` @ `c512c7c` (15 Sep 2026, schema v62)
 - **Branch:** `fin/main` — never pushed by automation
-- **Last updated:** 2026-09-18 (the gate can no longer pass without running tests; first Room-backed tests; `body_trimmed` at v63 — both gates green, 2,897 tests)
+- **Last updated:** 2026-09-18 (spec 14 §14.5 transfer re-typing; spec 20 §20.4 step 7 payment confirmations; `findMergeCandidate`'s upper date bound pinned; one real-amount PII leak caught in review and redacted before the commit — both gates green, 2,946 tests)
 
 ## Toolchain
 
@@ -45,8 +45,8 @@ A parser run therefore costs ~15s rather than ~1s on a warm build, because the t
 | M1a | Email parsers (parser-core) | — | **done** | included in the 2,175 above |
 | M1b | Room v63 schema | 63 | **done** | `./init.sh app` green |
 | M1c | IMAP client + body extractor + credential store | 63 | **done** | green: FakeMailboxClientTest 17, ImapSyncAlgorithmTest 10, ImapMessageReadTest 12, EmailBodyExtractorTest 22 |
-| M1d | Ingest pipeline + dedup engine | 63 | in-progress | Wired end to end and green: DedupEngineTest 68, EmailTransactionIngestorTest 23, EmailSyncWorkerTest 21, PlausibleDueSettlerTest 17, DueMergeEngineTest 60, DueRepositoryTest 18, IngestingEmailBatchProcessorTest 9, RoomOwnAccountSourceTest 11. All four code defects the 2026-09-17 review found are fixed and pinned by tests. What is left is **not code**: no screen can connect a mailbox yet, so `EmailSyncRunner.run()` returns `NotConfigured` on every real run — see NEEDS-YOU.md, "How a mailbox gets connected". Not `done` until a real sync is watched on a device. |
-| M2 | Pending, commitments, settings backbone | 64 | todo | Commitments entered via UI; dues generated with no false "late" |
+| M1d | Ingest pipeline + dedup engine | 63 | in-progress | Wired end to end and green: DedupEngineTest 68, EmailTransactionIngestorTest 32, EmailSyncWorkerTest 21, PlausibleDueSettlerTest 17, DueMergeEngineTest 72, DueRepositoryTest 21, IngestingEmailBatchProcessorTest 9, RoomOwnAccountSourceTest 11. All four code defects the 2026-09-17 review found are fixed and pinned by tests, and §14.5 re-typing and §20.4 step 7 landed on 2026-09-18. One **new** defect is open against that newest code — the payment-confirmation window reaches the wrong bill through SQL, "Next action" item 1 — so this path is green but not yet right. What is otherwise left is **not code**: no screen can connect a mailbox yet, so `EmailSyncRunner.run()` returns `NotConfigured` on every real run — see NEEDS-YOU.md, "How a mailbox gets connected". Not `done` until a real sync is watched on a device. |
+| M2 | Pending, commitments, settings backbone (spec 07 puts screen 47, Email Settings, here) | 64 | todo | Commitments entered via UI; dues generated with no false "late" |
 | M3 | Money plan | 65 | todo | Cycle shows spendable + run-rate from entered salary |
 | M4 | Loans and EMI | 66 | todo | Schedules built; EMI debits settle schedule rows |
 | M5 | Receipts | 67 | todo | Order emails link to card transactions; refunds reduce spend |
@@ -60,7 +60,7 @@ A parser run therefore costs ~15s rather than ~1s on a warm build, because the t
 - Upstream cloned; `fin/main` cut from `c512c7c`; history intact (1238 commits)
 - Full spec read and cross-checked; contradictions recorded in [FORK-CHANGES.md](FORK-CHANGES.md)
 - `parser-core`: `Money`, `DateParse`, sender registry (~60 senders), ignore rules,
-  7 transaction parsers, 8 due parsers, 2 factories, `EmailParserTestUtils` — 333 test methods
+  7 transaction parsers, 9 due parsers, 2 factories, `EmailParserTestUtils` — 333 test methods
 - `app`: schema 62 → 63, 5 entities + 5 DAOs, `AutoMigration(62, 63)`
 - PII: 24 violations found and redacted; `PiiLintTest` guards fork-owned paths; `spec/` git-ignored
 - `app`: `DueMergeEngine` — spec 20 §20.4's merge key, candidate choice, source-precedence
@@ -119,6 +119,54 @@ A parser run therefore costs ~15s rather than ~1s on a warm build, because the t
   (v63 has never shipped). `EmailMessageDaoTest` 14 → 18, and the three that should fail were
   watched failing under a mutation that drops `body_trimmed = 1` from the UPDATE.
   Closes "Next action" item 2
+- `app` + `parser-core`: **spec 20 §20.4 step 7 — payment-confirmation notices.**
+  `NoticeKind.PAYMENT_CONFIRMED` and `DueMergeEngine.issuerRank`'s branch for it were
+  unreachable; nothing could produce one. `ParsedDue.paymentConfirmed` is the new reading (a
+  flag, not a fourth `DueEscalation` rung — escalation is urgency and a paid bill has none),
+  `CardPaymentConfirmationDueParser` produces it from CRED C2 and ICICI I2, and the two verbatim
+  copies of `noticeKindOf` now share `DueMergeEngine.noticeKindOf`, pinned by a test that fails
+  the day a `NoticeKind` value has no reading behind it. Such a notice **records a source and
+  settles nothing**: it never creates a due (`DueWriter.mergeIntoExisting`), never moves an
+  amount, a minimum, a date or a status, and is matched over §20.5's 60-day window rather than
+  §20.4's ±2-day bill tolerance, nearest bill winning. Settlement stays `DueSettler.trySettle`'s,
+  driven by the transaction the same mail produces. The spec 12 C2/I2 "settles the matching due"
+  contradiction is resolved in FORK-CHANGES.md, three rows. `CardPaymentConfirmationDueParserTest`
+  23, DueMergeEngineTest 60 → 72, EmailTransactionIngestorTest 28 → 32, DueRepositoryTest 18 → 21.
+  Spec 26's `UNMATCHED_PAYMENT_NOTICE` alert itself is M7 and is deliberately not built here
+- `app`: **spec 14 §14.5 — a transfer between the owner's own accounts is one `TRANSFER` row.**
+  `EmailTransactionIngestor.enrich` now receives the `MatchRule` the engine decided under, and a
+  merge under `TRANSFER_LINK` (L5) re-types the survivor to `TransactionType.TRANSFER` and fills
+  `from_account` / `to_account` from the incoming leg **into holes only**. Every other rule leaves
+  the type and the accounts exactly where they were, and the merge stays additive — the category is
+  still never touched, so a re-typed transfer keeps its first leg's label until screen 45 edits it.
+  The decision is not re-derived in `data/`: L5 firing *is* the decision, and L5 lives in
+  `DedupEngine` (spec 02 §2.3). `dedupInput`'s hard-coded `direction = null` is gone — direction now
+  comes from which of `from_account` / `to_account` is the record's own account, for the stored side
+  as well as the incoming one. Without the stored side, two legs a parser had already typed
+  `TRANSFER` both read "money out" and L5 could never fire at all. EmailTransactionIngestorTest
+  23 → 28 (a credit leg re-typing a stored `EXPENSE`; a credit banked as `INCOME` ceasing to be
+  income when its debit arrives; the own-account registry pairing legs with no shared reference;
+  the same pair staying apart when `settings.accounts.own` is empty; an ordinary `AMOUNT_WINDOW`
+  twin leaving the type alone)
+- **PII: one real-amount leak was caught in review and redacted before it was committed.** The new
+  `CardPaymentConfirmationDueParserTest` carried an ICICI purchase-alert fixture that copied the
+  owner's mail verbatim — the amount, the transaction timestamp, the available credit limit and the
+  total credit limit all matched `spec/10-gmail-corpus.md` byte for byte, where every sibling
+  fixture had changed its figures. Only the last-4 and the merchant had been redacted. The fixture
+  is a *negative* case (this parser must not fire on a purchase alert), so nothing but the
+  template's shape was load-bearing and all four figures are now invented, with a comment saying
+  why a credit ceiling counts as personal data. Ground rule 3 and spec 06 §6.2, "amounts changed".
+  `PiiLintTest` cannot catch this class of leak — it matches shapes, and a real amount has the same
+  shape as an invented one — so the gate stayed green throughout; the cross-check that found it was
+  grepping the spec corpus for every money-shaped token in the run's diff, which is worth repeating
+  on any run that adds fixtures
+- `.claude/workflows/fin-advance.js`: the workflow script no longer spells the owner's Windows
+  account name. `ROOT`, `JDK` and `SDK` come from `FIN_ROOT` / `FIN_JDK` / `FIN_SDK`, then
+  `ANDROID_HOME` / `ANDROID_SDK_ROOT`, then values derived from the running environment
+  (`process.cwd()`, `LOCALAPPDATA`), and on this machine all three still evaluate byte-identically
+  to the literals they replace. It was the only tracked file in the repo that named the account;
+  `grep -rn nrkni` over the tree now hits only git-ignored paths. `JAVA_HOME` is deliberately not
+  consulted, because here it is as likely to hold Android Studio's JBR 25, which `init.sh` refuses
 
 ## Next action
 
@@ -126,23 +174,68 @@ All four defects that stood here on 2026-09-17 are fixed and pinned by tests —
 merge bug, the two machine decisions keyed off the user-editable note, the `PiiLintTest` gap on
 `data/repository`, and the missing `RoomOwnAccountSource` suite. See "Done" for what each became.
 
-M1d's code is finished. What keeps it out of `done` is not code: **nothing in the app can
-connect a mailbox**, so `EmailSyncRunner.run()` returns `NotConfigured` on every periodic run.
-That is an owner decision (pull spec 47's Email Settings screen forward into M1d, or accept a
-developer-only entry point and leave 47 in M2) and it is written up in NEEDS-YOU.md. Do not
-invent a third answer here; build M2 around it.
+M1d's code is feature-complete — the two behaviours it was still missing landed on 2026-09-18 —
+but item 1 below is a live defect in the newer of them, so "finished" now means "nothing left to
+build", not "nothing left to fix". What keeps M1d out of `done` is still not code: **nothing in
+the app can connect a mailbox**, so `EmailSyncRunner.run()` returns `NotConfigured` on every periodic run.
+The default answer needs no owner decision, because spec 07 already schedules screen 47 (Email
+Settings) in **M2**: it gets built when M2 is built. M2 is `todo` in the table above and not a
+line of it exists yet, so 47 is *scheduled into* M2, not under way in it — NEEDS-YOU.md's
+"Resolved by following the spec" entry says the same thing, and the two must not drift apart
+again. The only thing left for the owner there is the override — a temporary developer-only
+entry point sooner — and M1d stays `in-progress` either way until a real sync is watched on a
+device. Do not invent a third answer here; build M2 around it.
 
 Both gates are green, and all three risks that stood here on 2026-09-17 are closed — the gate's
 false checkmark, the unrecorded truncation, and the untested trim query. See "Done" for what each
-became. One consequence of closing the first is worth carrying: **every gate-log row below dated
-on or before 2026-09-18's second entry was produced by the old script**, so those "both gates
-green" claims were never proof that the tests ran. The 2,175 + 722 totals are independently
+became. One consequence of closing the first is worth carrying: **every gate-log row from the
+`./gradlew clean` + 2,852-test row downwards was produced by the old script**, so those "both
+gates green" claims were never proof that the tests ran. (Count from the row's own text, not
+from its position — this list grows at the top.) The 2,175 + 722 totals are independently
 corroborated by the runs since, but re-run `./init.sh` before marking M1d or anything above it
 `done` on the strength of an old row.
 
-The review of this run found three new things:
+The review of this run found one defect and two risks in the code this run added, on top of what
+already stood here. (The "Closes 'Next action' item N" notes in the Done list above refer to the
+numbering of the run that closed each one, not to the list below.)
 
-1. **Risk — `body_trimmed` is write-only, and the remedy its own KDoc prescribes has no reachable
+1. **Defect — the 60-day payment-confirmation window reaches the wrong bill, because the widened
+   rule is unreachable through `DueRepository`.** `DueMergeEngine.chooseTarget` now orders payment
+   confirmations by nearest due date, and a test proves it does — but the test calls `chooseTarget`
+   directly with two candidates, and production never hands it two. `DueRepository.candidatesFor`
+   builds the set from three queries: `getByDueId` cannot hit, because `dueId()` hashes
+   `parsed.dueDate`, which for a confirmation is the *payment* date; `getByReference` is skipped,
+   because `CardPaymentConfirmationDueParser` deliberately leaves `reference` null; and
+   `DueDao.findMergeCandidate` is `ORDER BY due_date ASC LIMIT 1`. SQL therefore chooses, by
+   **earliest** due date, over a window this change just widened from ±2 days to ±60. Concretely: a
+   card with an OPEN statement due 5 Aug (still open precisely because it was paid from an account
+   Fin cannot see — the case step 7 exists for) and another due 1 Oct, given a confirmation dated
+   28 Sep, queries [30 Jul, 27 Nov] and gets the August row; the `PAYMENT_CONFIRMED` source lands on
+   the wrong bill and October never gets one, so M7's `UNMATCHED_PAYMENT_NOTICE` will name the wrong
+   statement. The fix is a DAO query that returns the candidate *set* rather than one row — already
+   flagged as M2 work in `DueRepository`'s KDoc — and a repository-level test with two open dues,
+   which is the test that would have caught this (`DueRepositoryTest`'s fake DAO faithfully restates
+   the `minByOrNull { it.dueDate }` behaviour, so it was reachable from where the suite already is).
+   **Take this first.**
+2. **Risk — `chooseTarget` matches a payment confirmation on date alone and ignores the amount it
+   states**, while its KDoc cites §20.5, whose primary criterion is the amount (`|txn.amount −
+   due.amount| ≤ tol → +50`, `minimumDue` → +30, `minMatchScore` 60) with nearest date only as the
+   tie-break. A card with statement A due 5 Sep for one figure and statement B due 1 Oct for another
+   takes a confirmation of B's figure paid 15 Sep to A, because A is ten days away and B is sixteen.
+   `ParsedDue.amount` on a confirmation is exactly the sum paid, so the evidence is there and unused.
+   Reachable only through the one-row SQL path above today, which is why it is a risk and not a
+   second defect — it becomes the live rule the moment item 1 is fixed, so fix both together.
+3. **Risk — a `PAYMENT_CONFIRMED` source lends authority it never earned.** `issuerRank` maps
+   everything that is not a statement to `ISSUER_REMINDER` (rank 3), and `merge` computes
+   `standing` as the max rank over a due's sources. A due built from CRED's bill has sources
+   `[CRED = 2]`, so a corrected CRED bill is authoritative and may restate the figure — the case
+   the code's own comment defends ("a second statement from the issuer is a correction"). Record an
+   ICICI confirmation against that due and `standing` becomes 3, after which the corrected bill is
+   refused and the due keeps a figure the biller has already withdrawn. The confirmation contributed
+   no figure at all — that is what `authoritative = !confirmation && …` says two lines above — so it
+   should not raise the bar for everyone else. No test covers a notice arriving *after* a
+   confirmation.
+4. **Risk — `body_trimmed` is write-only, and the remedy its own KDoc prescribes has no reachable
    code path.** `getUnmatched`'s KDoc says a flagged row may be re-parsed only after the full
    message is re-fetched, and must otherwise stay on the backlog "for a run that can re-fetch it".
    Three things make that last clause false today: `EmailMessageDao.insert` is
@@ -153,13 +246,21 @@ The review of this run found three new things:
    temporarily so. The flag itself is right and C7-safe — it fails closed — but the escape hatch
    is missing and no test pins the obligation, so nothing will notice when M5 binds R-11-10 and
    quietly parses the prefix anyway. Settle it with R-11-10, not before.
-2. **Risk — `DueDaoTest` never probes `findMergeCandidate`'s upper date bound**, despite a test
-   named "the date window includes both of its ends". Every row in the file sits at or below
-   `billed + 2` while `toDate` is `billed + 3`, so rewriting `due_date BETWEEN :fromDate AND
-   :toDate` as `due_date >= :fromDate` would leave the whole suite green — and that is the
-   direction that loses money, because an unbounded upper edge folds a future statement onto the
-   current one. One insert at `billed.plusDays(4)` with an `assertNull` closes it.
-3. **Gap — `AutoMigration(62, 63)` has still never executed.** The Robolectric harness proves the
+5. **Closed — `DueDaoTest` now probes `findMergeCandidate`'s upper date bound.** It did not:
+   every row sat at or below `billed + 2` while `toDate` was `billed + 3`, so rewriting
+   `due_date BETWEEN :fromDate AND :toDate` as `due_date >= :fromDate` left the whole suite
+   green — the direction that loses money, because an unbounded upper edge folds a future
+   statement onto the current one. Two tests close it: a row at `billed + 3` that must still be
+   found (and must vanish at `slack = 2`), and a row at `billed + 4` asserted null, with a
+   widened window that does find it so the null cannot be a failed insert. The test whose name
+   claimed both ends while checking one is split into `the near end of the date window is
+   included` and `the far end of the date window is included`. DueDaoTest 16 → 18. Verified by
+   mutation: with the upper bound dropped, exactly those two go red and the other 16 stay green.
+   Worth knowing for whoever tries it next — the literal `due_date >= :fromDate` rewrite does not
+   compile, because Room refuses an unused query parameter (`[ksp] DueDao.kt:133: Unused
+   parameter: toDate`), so the mutation has to keep `:toDate` mentioned to get as far as the
+   tests. The query itself is unchanged and this run wrote no production code.
+6. **Gap — `AutoMigration(62, 63)` has still never executed.** The Robolectric harness proves the
    schema Room creates *from scratch*, which is a different statement. The reason it cannot do
    more is worth knowing before M2 writes a migration: `MigrationTestHelper` loads every `NN.json`
    through the instrumentation context's *assets*, and the only asset tree a Robolectric unit test
@@ -169,7 +270,20 @@ The review of this run found three new things:
    `androidTest.assets.srcDirs += files("$projectDir/schemas")`, which costs nothing in the APK
    but needs a device, so it cannot be part of `./init.sh`. M2's `Migration(63, 64)` is the first
    hand-written migration and should land together with it. Recorded in FORK-CHANGES.md.
-4. Nits, seven carried over and three new. New this run: `init.sh`'s `line="${line%$'\r'}"` CR-strip
+7. Nits. New on 2026-09-18's last run: `DueMergeConfig.paymentNoticeWindowDays`'s KDoc (and its
+   FORK-CHANGES row) call 60 days "§20.5's own outer bound, taken symmetrically", but §20.5 is
+   asymmetric — `earlyPayDays` 45 backwards, `latePayDays` 60 forwards — so the implemented window
+   is 15 days wider on one side than the sentence describing it; `CardPaymentConfirmationDueParser`'s
+   `CRED_ISSUERS[...] ?: return emptyList()` is dead, because group 1 of `CRED_PAYMENT` is a fixed
+   alternation over exactly the six keys the map holds (the test named for that branch exercises the
+   regex instead, and `groupValues[2].takeLast(4)` on a `(\d{4})` group is likewise a no-op); and
+   `PiiLintTest` scans only `.kt` files under `forkOwnedPaths`, which is why the owner's account name
+   sat in a tracked `.js` file for days — widening it to the fork-owned non-Kotlin files
+   (`.claude/workflows`, `init.sh`, `docs/`) would catch the next one. One more for a fixture sweep:
+   four **pre-existing** ICICI fixtures still carry `10:13:10`, the timestamp on the owner's real
+   purchase alert, though every amount and merchant around it was changed; times are not on spec 06
+   §6.2's redaction list, so this is a tidy-up rather than a violation. Carried over, seven and three:
+   `init.sh`'s `line="${line%$'\r'}"` CR-strip
    can never fire for the CRLF case it was written for, because the `grep -E "^> Task ${task}( |$)"`
    that produced the line cannot match a CR-terminated *bare* task line — on a CRLF log the gate
    would fail loudly on a passing run, which is at least the safe direction; `verify_tests` runs
@@ -193,7 +307,8 @@ The review of this run found three new things:
    DESC` and every fixture ties at 1000.00); and `EmailMessageDao` now has two hand-written fakes
    where the shared one lacked a single method body.
 
-Then M2 (schema v64): commitments, the settings backbone, and `sender_overrides`.
+Then M2 (schema v64): commitments, the settings backbone, and `sender_overrides`. Screen 47 rides
+with it.
 
 ## Verification log
 
@@ -201,6 +316,7 @@ Newest first. The workflow appends one row per run; never rewrite history here.
 
 | When | Command | Result |
 |---|---|---|
+| 2026-09-18 | `./init.sh parser` then `./init.sh app` @ `fin/main`, re-run after a PII redaction | **GREEN** — 2,198 parser (162 suites) + 748 app (60 suites) = **2,946 tests, 0 failures, 0 errors, 0 skipped**, summed from the JUnit XML. Grown this run: `CardPaymentConfirmationDueParserTest` 23 (new), DueMergeEngineTest 60 → 72, EmailTransactionIngestorTest 23 → 32, DueRepositoryTest 18 → 21, DueDaoTest 16 → 18. `PiiLintTest` 8, green. Two things this row should say plainly. First, **the gate was run again after the fixture redaction** described in the Done list — the figures that went into the commit are not the figures the earlier runs of this day's work measured, and the totals above are from that re-run. Second, **green did not catch the leak and could not have**: `PiiLintTest` matches shapes, and a real amount is shaped exactly like an invented one. Compile tasks came back UP-TO-DATE, which `init.sh` allows deliberately (Gradle re-hashes every input); both test tasks were forced with `--rerun` on a cleared results directory, so 2,198 and 748 are counts of tests that really executed. This is the first row whose working tree was committed in the same run, so it is reproducible from `git` rather than describing a tree that existed only on this machine |
 | 2026-09-18 | `./init.sh parser` then `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser (161 suites) + 722 app (60 suites) = **2,897 tests, 0 failures, 0 errors, 0 skipped**, summed from the JUnit XML rather than taken from the script's own arithmetic. The first run gated by the rewritten `init.sh`: both test tasks' outcome lines came back bare after a forced `--rerun` on a cleared results directory, which is now the only way the checkmark can print. Grown this run: the three Room suites (`EmailMessageDaoTest` 18, `DueDaoTest` 16, `TransactionSourceDaoTest` 11 = **45 tests**, every one executing real SQL against an in-memory `PennyWiseDatabase`), including the four `body_trimmed` cases. `PiiLintTest` 8, green. **This row corrects the one first written for this run**, which said 718 app / 2,893 total / `EmailMessageDaoTest` 14: those figures were recorded before the four `body_trimmed` tests landed and the gate was never re-run against them. One-off cost on a cold machine: Robolectric fetches `android-all-instrumented-14-robolectric-10818077-i7.jar` (151 MB) from Maven Central into `~/.m2/repository` on its first run. Measured at ~1.5 MB/s here, unlike the Google CDNs |
 | 2026-09-18 | `./gradlew clean` then `./init.sh parser` + `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser (161 suites) + 677 app (57 suites) = **2,852 tests, 0 failures, 0 errors, 0 skipped**. Run from a clean state deliberately: the first attempt reported every test task UP-TO-DATE and executed nothing while still printing the checkmark (Next action item 1). Grown this run: DueMergeEngineTest 50 → 60, DueRepositoryTest 16 → 18, EmailSyncWorkerTest 15 → 21, new RoomOwnAccountSourceTest 11. `PiiLintTest` 8, green — forced with `:parser-core:jvmTest --tests "*PiiLintTest*" --rerun-tasks`, because Gradle cannot see that its on-disk inputs changed. 141 compiler warnings, 0 errors, all pre-existing. One trap for whoever reads this next: on the first parser run after `clean`, Gradle wrote only 1 of the 161 JUnit XML files, so `parser-core/build/reports/tests/jvmTest/index.html` claimed 8 tests while the console printed 2,175 PASSED / 0 FAILED. A `--rerun-tasks` on the warm build directory produced all 161 and the same totals — a report-writing quirk, not lost tests. Count from the console or from a warm re-run |
 | 2026-09-18 | `./gradlew clean` then `./init.sh parser` + `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser + 648 app = **2,823 tests, 0 failures, 0 errors, 0 skipped**. Clean run, every task executed. New suites: DueMergeEngineTest 50, DueRepositoryTest 16, IngestingEmailBatchProcessorTest 9. `PiiLintTest` 8, green after its rewrite |

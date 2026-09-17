@@ -29,7 +29,19 @@ import com.pennywiseai.parser.core.email.due.DueKind as ParserDueKind
  */
 data class DueMergeConfig(
     /** How far apart two readings of one bill may date it and still be that one bill. */
-    val mergeDateToleranceDays: Long = 2
+    val mergeDateToleranceDays: Long = 2,
+
+    /**
+     * How far a payment confirmation (§20.4 step 7) may sit from the bill it cleared.
+     *
+     * A separate figure because the two dates mean different things. `mergeDateToleranceDays`
+     * compares two senders' idea of *the same due date*, so two days is generous. A payment
+     * notice states the day the **money moved**, which is a different quantity entirely: a card
+     * bill can be paid three weeks early or three weeks late and still be that bill. So a
+     * confirmation is matched over §20.5's settlement span instead, taking its outer bound —
+     * `settings.dues.latePayDays` (60) — symmetrically, with the nearest bill winning.
+     */
+    val paymentNoticeWindowDays: Long = 60
 )
 
 /**
@@ -72,7 +84,7 @@ enum class NoticePrecedence(val rank: Int) {
  * row to insert or an edited copy of one to update. Every query behind those rows belongs to
  * `DueRepository`, which owns no rule of its own.
  *
- * Four decisions are stated once here, each as a named member, because each is a place where
+ * Five decisions are stated once here, each as a named member, because each is a place where
  * the app could otherwise lose or invent money:
  *
  *  - [dueId] — step 1's identity. Two readings of one bill must land on one row, and a row's
@@ -83,6 +95,9 @@ enum class NoticePrecedence(val rank: Int) {
  *    settled due is immutable to notices (§20.7).
  *  - [escalationOf] — step 4's `escalation = max(current, notice)`, which at schema v63 has no
  *    column of its own; see the note on that member.
+ *  - [Companion.noticeKindOf] — how the sender framed one notice, including step 7's payment
+ *    confirmation, decided here rather than twice. A confirmation is inert against every figure
+ *    on the row; what it adds is the `due_sources` entry spec 26's alert is computed from.
  */
 @Singleton
 class DueMergeEngine @Inject constructor(
@@ -159,10 +174,22 @@ class DueMergeEngine @Inject constructor(
 
     /** Step 2's date window: the readings must date the bill within the tolerance of each other. */
     fun mergeWindow(parsed: ParsedDue, config: DueMergeConfig = DueMergeConfig()): DateWindow =
-        DateWindow(
-            from = parsed.dueDate.minusDays(config.mergeDateToleranceDays),
-            to = parsed.dueDate.plusDays(config.mergeDateToleranceDays)
-        )
+        toleranceDays(parsed, config).let { tolerance ->
+            DateWindow(
+                from = parsed.dueDate.minusDays(tolerance),
+                to = parsed.dueDate.plusDays(tolerance)
+            )
+        }
+
+    /**
+     * How far the two dates may lie apart, which depends on what the incoming date *is*.
+     *
+     * For a bill it is another sender's reading of the same due date (±2). For a payment
+     * confirmation it is the day the money moved, which §20.4 step 7 has to reconcile with a
+     * due date it never states — see [DueMergeConfig.paymentNoticeWindowDays].
+     */
+    private fun toleranceDays(parsed: ParsedDue, config: DueMergeConfig): Long =
+        if (parsed.paymentConfirmed) config.paymentNoticeWindowDays else config.mergeDateToleranceDays
 
     // -----------------------------------------------------------------------------------------
     // Steps 2 and 4 — which row this reading belongs to
@@ -193,7 +220,7 @@ class DueMergeEngine @Inject constructor(
         if (!due.currency.equals(parsed.currency.trim(), ignoreCase = true)) return false
         if (!sameAccount(due, parsed) && !sameReference(due, parsed)) return false
         return abs(ChronoUnit.DAYS.between(due.dueDate, parsed.dueDate)) <=
-            config.mergeDateToleranceDays
+            toleranceDays(parsed, config)
     }
 
     /**
@@ -201,6 +228,13 @@ class DueMergeEngine @Inject constructor(
      *
      * The row whose `due_id` *is* this reading's key skips the contest: it is the same bill by
      * definition, and no count of sources can make another row a better answer.
+     *
+     * A payment confirmation is ordered differently, and has to be. Step 4's contest assumes
+     * every candidate is a reading of *one* bill, which the ±2-day window all but guarantees;
+     * over the two-month span a payment is matched across (§20.4 step 7) two consecutive card
+     * statements are both candidates, and "most sources" would cheerfully hand the payment to
+     * last month's. The bill a payment cleared is the nearest one by date — the same tie-break
+     * §20.5 settles a transaction with.
      */
     fun chooseTarget(
         candidates: List<Candidate>,
@@ -209,14 +243,21 @@ class DueMergeEngine @Inject constructor(
     ): Candidate? {
         val key = dueId(parsed)
         candidates.firstOrNull { it.due.dueId == key }?.let { return it }
+        val byAuthority = compareByDescending<Candidate> { it.sourceCount }
+            .thenBy { it.due.createdAt }
+            // Id last, so the answer never depends on the order rows came back in.
+            .thenBy { it.due.id }
+        val ordering =
+            if (parsed.paymentConfirmed) {
+                compareBy<Candidate> {
+                    abs(ChronoUnit.DAYS.between(it.due.dueDate, parsed.dueDate))
+                }.then(byAuthority)
+            } else {
+                byAuthority
+            }
         return candidates
             .filter { isCandidate(it.due, parsed, config) }
-            .sortedWith(
-                compareByDescending<Candidate> { it.sourceCount }
-                    .thenBy { it.due.createdAt }
-                    // Id last, so the answer never depends on the order rows came back in.
-                    .thenBy { it.due.id }
-            )
+            .sortedWith(ordering)
             .firstOrNull()
     }
 
@@ -294,9 +335,17 @@ class DueMergeEngine @Inject constructor(
         val due = target.due
         val incoming = precedenceOf(parsed)
         val standing = target.sources.maxOfOrNull { precedenceOf(it).rank }
+        // §20.4 step 7. A payment confirmation is never authoritative over anything, whatever
+        // rung its sender sits on, because it is not talking about the bill: "amount paid" and
+        // "amount due" are different numbers the moment somebody pays the minimum, and the date
+        // it states is the day money moved, not a due date. Letting one overwrite either would
+        // put a figure on screen 33 that nobody ever billed (spec 01, constraint C7). Nothing is
+        // lost — every figure it did state is kept on its `due_sources` row, which is where
+        // spec 26's UNMATCHED_PAYMENT_NOTICE reads it from.
+        val confirmation = parsed.paymentConfirmed
         // Equal rank still wins: a second statement from the issuer is a correction, and
         // refusing it would pin the due to a figure the biller has already withdrawn.
-        val authoritative = standing == null || incoming.rank >= standing
+        val authoritative = !confirmation && (standing == null || incoming.rank >= standing)
         // §20.7: a due whose money question is closed never changes status or figures because
         // a notice arrived. The notice is still kept in `due_sources`, so nothing is lost —
         // only the settled row is protected. The one exception is a due R-20-09 dismissed by
@@ -321,6 +370,9 @@ class DueMergeEngine @Inject constructor(
         // failure the note marker had.
         val takesAmount = when {
             incomingAmount == null -> false
+            // §20.4 step 7, and the null-fill is no exception to it: an amount nobody has
+            // stated, filled from a payment notice, prints the paid figure as the bill.
+            confirmation -> false
             // §20.7 is tested before the null-fill, not after it. A settled due takes no figure
             // at all — not even into a gap — because the alternative is the row silently
             // acquiring an aggregator's number while it is still flagged amount-not-stated,
@@ -335,6 +387,8 @@ class DueMergeEngine @Inject constructor(
         val amountStated = due.amountStated || takesAmount
         val minimumDue = when {
             incomingMinimum == null -> due.minimumDue
+            // Same reason as the amount above: a confirmation contributes no figure at all.
+            confirmation -> due.minimumDue
             // Same guard, same reason: a minimum owed is a figure, and a settled due's figures
             // are closed. Spec 20 §20.4's "it may fill nulls" is a licence for a *lower-ranked*
             // notice, not for a notice arriving after the money question was answered.
@@ -370,6 +424,11 @@ class DueMergeEngine @Inject constructor(
         // constant, so it survives, and nothing below decides anything.
         val note = when {
             frozen -> due.note
+            // A confirmation's caption describes the *payment*, not the bill, and the chain
+            // below can only replace a note, never clear one — so "Payment confirmed by CRED"
+            // would become this due's caption for the rest of its life. Screen 34 shows the
+            // notice from `due_sources` instead, where it reads as what it is.
+            confirmation -> due.note
             status == DueStatus.DISMISSED && nothingDue -> NOTHING_DUE_NOTE
             // The figure arrived, so the caption that stood in for it must go.
             due.note == AMOUNT_NOT_STATED_NOTE && takesAmount -> parsed.description
@@ -427,15 +486,10 @@ class DueMergeEngine @Inject constructor(
 
     /**
      * How the *sender* framed this notice (spec 12 C3) — the same reading
-     * `EmailTransactionIngestor` writes to `due_sources.notice_kind`, restated here so the
-     * engine can rank a notice that is not stored yet.
+     * `EmailTransactionIngestor` writes to `due_sources.notice_kind`, so the engine can rank a
+     * notice that is not stored yet. Both call sites share [Companion.noticeKindOf].
      */
-    fun noticeKind(parsed: ParsedDue): NoticeKind = when (parsed.escalation) {
-        DueEscalation.OVERDUE -> NoticeKind.OVERDUE
-        DueEscalation.DUE_TODAY -> NoticeKind.DUE_TODAY
-        DueEscalation.DUE_SOON -> NoticeKind.REMINDER
-        null -> if (parsed.autoPay) NoticeKind.AUTOPAY_UPCOMING else NoticeKind.STATEMENT
-    }
+    fun noticeKind(parsed: ParsedDue): NoticeKind = noticeKindOf(parsed)
 
     /**
      * `escalation = max(current, notice.escalation)`, `REMINDER < DUE_TODAY < OVERDUE_NOTICE`
@@ -493,8 +547,9 @@ class DueMergeEngine @Inject constructor(
     private fun issuerRank(kind: NoticeKind): NoticePrecedence = when (kind) {
         NoticeKind.STATEMENT -> NoticePrecedence.ISSUER_STATEMENT
         // A payment confirmation is the issuer speaking about its own bill, and §20.4 step 7
-        // keeps it from settling anything; ranking it below a statement lets it fill a gap but
-        // never move the amount.
+        // keeps it from settling anything. It ranks below a statement, which matters only for
+        // what it does to *later* notices: [merge] refuses it every figure outright, so the
+        // rung it holds is the authority it lends the row, not a licence of its own.
         else -> NoticePrecedence.ISSUER_REMINDER
     }
 
@@ -561,6 +616,29 @@ class DueMergeEngine @Inject constructor(
     fun storedKind(kind: ParserDueKind): DueKind = DueKind.fromStored(kind.name)
 
     companion object {
+
+        /**
+         * How the *sender* framed one notice (spec 12 C3), decided in exactly one place.
+         *
+         * `EmailTransactionIngestor` writes the answer to `due_sources.notice_kind` and the
+         * engine reads it back to rank a notice; both used to carry their own verbatim copy of
+         * this `when`, with nothing pinning them together, so a value added to [NoticeKind]
+         * could be — and was — wired into neither.
+         *
+         * A payment confirmation is tested first because it is a different question from
+         * urgency (spec 20 §20.4 step 7): a bank confirming payment of a bill it had already
+         * called overdue is still confirming a payment, and [escalationOf] ignores
+         * `PAYMENT_CONFIRMED` precisely so that the ladder is not disturbed by it.
+         */
+        fun noticeKindOf(parsed: ParsedDue): NoticeKind = when {
+            parsed.paymentConfirmed -> NoticeKind.PAYMENT_CONFIRMED
+            parsed.escalation == DueEscalation.OVERDUE -> NoticeKind.OVERDUE
+            parsed.escalation == DueEscalation.DUE_TODAY -> NoticeKind.DUE_TODAY
+            parsed.escalation == DueEscalation.DUE_SOON -> NoticeKind.REMINDER
+            parsed.autoPay -> NoticeKind.AUTOPAY_UPCOMING
+            else -> NoticeKind.STATEMENT
+        }
+
         /**
          * R-20-09's wording, verbatim — the **caption** on an auto-dismissed due.
          *

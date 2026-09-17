@@ -133,10 +133,13 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
 ## Resolved by following the spec — no decision needed
 
 - **How a mailbox gets connected.** M1d left this open: pull spec 47 (Email Settings) forward,
-  or leave it in M2. Spec 07 already schedules 47 in **M2**, which is the milestone now in
-  progress — so the default is simply to build it there, and no decision is required. M1d stays
-  `in-progress` until a real sync is watched on a device, which needs your Gmail app password
-  above rather than any code.
+  or leave it in M2. Spec 07 already schedules 47 in **M2**, so the default is simply to build
+  it there — no decision is required. M2 itself is still `todo` in BUILD-STATUS.md and no line
+  of it has been written yet; screen 47 is scheduled into it, not under way in it. (An earlier
+  version of this entry called M2 "the milestone now in progress", which disagreed with the
+  milestone table and with the code; the table is the one to trust.) M1d stays `in-progress`
+  until a real sync is watched on a device, which needs your Gmail app password above rather
+  than any code.
   *Override this only if you want a developer-only entry point sooner.*
 
 ## Log
@@ -145,6 +148,7 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-18 | (no new blockers) | Two engine behaviours landed — an own-account transfer now becomes a single `TRANSFER` (spec 14 §14.5), and a "payment received" mail now records a source without settling anything (spec 20 §20.4 step 7) — and neither needed anything from you. Worth knowing rather than doing: **the transfer fix is correct but inert until Fin knows your accounts.** The own-account list is seeded from `account_balances` and `cards`, so it only recognises accounts the app has already seen mail about, and `OwnAccount.vpa` is always null at schema v63 — a transfer identified only by a UPI handle still lands as two rows. That is the existing "Your own accounts and UPI handles" item above, which stays open and unticked. Also unchanged: the **Gmail app password** is still the single thing between the green pipeline and a real sync |
 | 2026-09-18 | A device or emulator session for the schema-migration suite | The first Room-backed tests landed this run and run real SQL, which made the remaining hole precise rather than vague: they exercise the schema Room creates from scratch, never the upgrade path. `MigrationTestHelper` can only read the schema JSON through instrumentation assets, so the suite cannot run headlessly at any price worth paying. Nothing to do yet — filed so that M2's first hand-written migration is not written on the assumption that `./init.sh` can check it |
 | 2026-09-18 | (no new blockers) | The **Gmail app password** and the **`dumpsys jobscheduler` confirmation** are both still open and still the only two things between the green pipeline and a real sync. Neither was ticked here — the automation never ticks; that is the owner's signal. The keystore entry above gained one factual note: its git-ignore promise is now actually enforced by `.gitignore` rather than by the files not existing |
 | 2026-09-18 | How a mailbox gets connected — and therefore when M1d can close | M1d's last four code defects were fixed this run, which made the real blocker visible: the pipeline is complete and green but unreachable, because no screen can supply an address or an app password. Choosing between pulling screen 47 forward and a temporary developer entry point is a scope call, not a credential, so nothing in the repo can make it |

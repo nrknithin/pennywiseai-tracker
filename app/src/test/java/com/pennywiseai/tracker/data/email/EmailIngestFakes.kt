@@ -43,6 +43,9 @@ internal const val INGEST_BANK_SENDER = "alerts@hdfcbank.bank.in"
 /** A sender the registry knows with no SMS alias behind it: an aggregator, not a bank. */
 internal const val INGEST_GATEWAY_SENDER = "protect@cred.club"
 
+/** A second bank, so a transfer can have two ends that are not the same instrument. */
+internal const val INGEST_OTHER_BANK_SENDER = "alerts@axis.bank.in"
+
 /** A sender the registry has never heard of — drives `UNKNOWN_SENDER`. */
 internal const val INGEST_UNKNOWN_SENDER = "billing@someshop.example.com"
 
@@ -102,7 +105,11 @@ internal fun parsedTransaction(
     sender: String = INGEST_BANK_SENDER,
     occurredAt: LocalDateTime = at(18, 30),
     transactionHash: String? = null,
-    currency: String = "INR"
+    currency: String = "INR",
+    // The account the money left, as spec 12 §12.1 H1 writes it on the debit leg.
+    fromAccount: String? = null,
+    // The account the money arrived in, as H2 writes it on the credit leg.
+    toAccount: String? = null
 ): ParsedTransaction = ParsedTransaction(
     amount = amount,
     type = type,
@@ -115,7 +122,9 @@ internal fun parsedTransaction(
     timestamp = occurredAt.toInstant(ZoneOffset.UTC).toEpochMilli(),
     bankName = bankName,
     transactionHash = transactionHash,
-    currency = currency
+    currency = currency,
+    fromAccount = fromAccount,
+    toAccount = toAccount
 )
 
 /** An already-stored transaction, as the SMS channel would have saved it. */
@@ -134,6 +143,7 @@ internal fun storedTransaction(
     currency: String = "INR",
     isDeleted: Boolean = false,
     description: String? = null,
+    fromAccount: String? = null,
     toAccount: String? = null
 ): TransactionEntity = TransactionEntity(
     id = id,
@@ -151,6 +161,7 @@ internal fun storedTransaction(
     transactionHash = transactionHash,
     isDeleted = isDeleted,
     currency = currency,
+    fromAccount = fromAccount,
     toAccount = toAccount,
     reference = reference,
     createdAt = at(18, 2),
@@ -333,6 +344,20 @@ internal class FakeDueWriter(
         val existing = rowIds[parsed.mergeKey]
         val id = existing ?: (firstId + rowIds.size).also { rowIds[parsed.mergeKey] = it }
         return DueUpsert(dueRowId = id, created = existing == null)
+    }
+
+    /**
+     * §20.4 step 7's merge-only path: the same merge key, and no row created when it misses.
+     *
+     * A payment confirmation reaches a due only when some earlier notice already put that bill
+     * on file, which here means a row already exists under its [ParsedDue.mergeKey] — the
+     * fake's stand-in for the engine's candidate search.
+     */
+    override suspend fun mergeIntoExisting(parsed: ParsedDue, emailMessageId: Long): DueUpsert? {
+        log?.record("mergeDue")
+        val existing = rowIds[parsed.mergeKey] ?: return null
+        written += parsed
+        return DueUpsert(dueRowId = existing, created = false)
     }
 }
 

@@ -171,11 +171,38 @@ class DueDaoTest {
     }
 
     @Test
-    fun `the date window includes both of its ends`() = runBlocking {
+    fun `the near end of the date window is included`() = runBlocking {
         dao.insert(due(dueId = "early", dueDate = billed.minusDays(3)))
 
         assertEquals("early", candidateFor(slack = 3)?.dueId)
         assertNull("one day short of it and the row is out of scope", candidateFor(slack = 2))
+    }
+
+    @Test
+    fun `the far end of the date window is included`() = runBlocking {
+        dao.insert(due(dueId = "late", dueDate = billed.plusDays(3)))
+
+        // Spec 20 §20.4 step 2 compares `|dueDate − parsed.dueDate| ≤ mergeDateToleranceDays`,
+        // which is symmetric: the reading may arrive either side of the stored date, because
+        // neither sender's idea of the due date is authoritative over the other's.
+        assertEquals("late", candidateFor(slack = 3)?.dueId)
+        assertNull("one day short of it and the row is out of scope", candidateFor(slack = 2))
+    }
+
+    @Test
+    fun `a bill past the far end is the next statement, not this one`() = runBlocking {
+        dao.insert(due(dueId = "next-cycle", dueDate = billed.plusDays(4)))
+
+        // The one bound the rest of this suite cannot see. Every other row here sits at or
+        // below `billed + 2`, so rewriting `due_date BETWEEN :fromDate AND :toDate` as
+        // `due_date >= :fromDate` would leave them all green — and an unbounded upper edge is
+        // the direction that loses money: next month's statement merges onto this month's,
+        // one of the two bills stops existing, and its amount is never shown as owed.
+        assertNull(candidateFor(slack = 3))
+
+        // Widening the window past it finds the row, so the null above is the upper bound
+        // doing its job rather than an insert that silently never landed.
+        assertEquals("next-cycle", candidateFor(slack = 4)?.dueId)
     }
 
     @Test

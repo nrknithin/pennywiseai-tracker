@@ -19,6 +19,7 @@ object DueParserFactory {
 
     private val parsers: List<DueParser> = listOf(
         AxisStatementDueParser(),
+        CardPaymentConfirmationDueParser(),
         CloudflareInvoiceDueParser(),
         CredBillDueParser(),
         GoDaddyRenewalDueParser(),
@@ -28,7 +29,11 @@ object DueParserFactory {
         PGSharpInvoiceDueParser()
     )
 
-    /** Every parser that claims this sender. Usually zero or one; HDFC has two. */
+    /**
+     * Every parser that claims this sender. Usually zero or one; three senders have two —
+     * HDFC (mandates and preclosures), CRED (new bill and payment confirmed) and ICICI
+     * (statement and payment confirmed).
+     */
     fun parsersFor(from: String?): List<DueParser> {
         val address = EmailSenderRegistry.normaliseAddress(from) ?: return emptyList()
         return parsers.filter { it.canHandle(address) }

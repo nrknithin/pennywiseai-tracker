@@ -11,9 +11,44 @@ export const meta = {
   ],
 }
 
-const ROOT = 'c:/Users/nrkni/Desktop/finspp'
-const JDK = '/c/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot'
-const SDK = '/c/Users/nrkni/AppData/Local/Android/Sdk'
+/*
+ * Where this machine keeps things — read from the environment, with fallbacks that work when
+ * nothing is set.
+ *
+ * None of these may be hardcoded. An absolute path under the owner's Windows profile publishes
+ * the owner's account name, and this repository is AGPL and ships beside every release APK
+ * (spec 04 §4.5; redaction convention spec 06 §6.2). `PiiLintTest` cannot catch it: it scans
+ * only `.kt` files under its fork-owned paths, and this is a `.js` file outside them. So the
+ * defaults below are derived from the *current* user's environment rather than written down.
+ *
+ * Set `FIN_ROOT` / `FIN_JDK` / `FIN_SDK` to override any of them.
+ */
+const env = (typeof process !== 'undefined' && process.env) ? process.env : {}
+const cwd = () => (typeof process !== 'undefined' && process.cwd) ? process.cwd() : '.'
+
+/** `C:\Users\x` → `c:/Users/x`. Forward slashes and a lower-case drive, as every tool here takes it. */
+const winPath = (p) => String(p).replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_m, d) => d.toLowerCase() + ':')
+
+/** `c:/Users/x` → `/c/Users/x`, the MSYS spelling git-bash wants inside an `export`. */
+const shPath = (p) => winPath(p).replace(/^([a-z]):\//, '/$1/')
+
+// The workflow is launched from the repo root, so the working directory is the fallback. Kept in
+// drive-letter form because agents pass it to file tools as well as to `cd`.
+const ROOT = winPath(env.FIN_ROOT || cwd())
+
+// JAVA_HOME is deliberately NOT consulted: `init.sh` requires JDK 21, and on this kind of machine
+// JAVA_HOME is as likely to hold Android Studio's bundled JBR 25, which it refuses. The fallback
+// is a product install path, so it names no user.
+const JDK = shPath(env.FIN_JDK || '/c/Program Files/Eclipse Adoptium/jdk-21.0.12.101-hotspot')
+
+// The SDK does live under the user's profile, so the last resort builds the platform default from
+// the environment's own idea of where that is rather than from a name written here.
+const SDK = shPath(
+  env.FIN_SDK ||
+  env.ANDROID_HOME ||
+  env.ANDROID_SDK_ROOT ||
+  (env.LOCALAPPDATA ? env.LOCALAPPDATA + '/Android/Sdk' : '$HOME/Android/Sdk')
+)
 
 /** Every agent gets this. It is the contract for the whole automation. */
 const GROUND_RULES = `

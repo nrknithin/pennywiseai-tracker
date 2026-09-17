@@ -7,7 +7,10 @@ import com.pennywiseai.tracker.data.database.entity.MatchRule
 import com.pennywiseai.tracker.data.database.entity.NoticeKind
 import com.pennywiseai.tracker.data.database.entity.SourceChannel
 import com.pennywiseai.tracker.data.database.entity.TransactionSourceEntity
+import com.pennywiseai.tracker.data.database.entity.TransactionType
+import com.pennywiseai.tracker.domain.engine.DedupConfig
 import com.pennywiseai.tracker.domain.engine.DedupEngine
+import com.pennywiseai.tracker.domain.engine.OwnAccount
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -65,6 +68,30 @@ class EmailTransactionIngestorTest {
         unrecognised = unrecognised
     )
 
+    /**
+     * A second ingestor over the same fakes, judged by different rules.
+     *
+     * [IngestConfig] is a per-run value rather than an injected singleton (see the note on
+     * [EmailTransactionIngestor]), so a run that knows which accounts are the owner's has to be
+     * built with them — which is what `IngestingEmailBatchProcessor.ingestConfigFor` does from
+     * `RoomOwnAccountSource`.
+     */
+    private fun ingestorWith(config: IngestConfig) = EmailTransactionIngestor(
+        emailMessageDao = emailDao,
+        transactionSourceDao = sourceDao,
+        dueSourceDao = dueSourceDao,
+        transactions = store,
+        saver = saver,
+        dues = dueWriter,
+        settler = settler,
+        dedup = DedupEngine(clock),
+        clock = clock,
+        dueParsers = dueParsers,
+        transactionParsers = transactionParsers,
+        unrecognised = unrecognised,
+        config = config
+    )
+
     private fun parsedDue(
         issuer: String = "Axis Bank",
         amount: BigDecimal? = BigDecimal("1234.00"),
@@ -82,6 +109,17 @@ class EmailTransactionIngestorTest {
         escalation = escalation,
         source = "AXIS"
     )
+
+    /**
+     * A "payment received" notice for the same card as [parsedDue] — spec 20 §20.4 step 7.
+     *
+     * The amount is the amount *paid* and the date is the day it was paid, which is exactly why
+     * neither may reach the due row.
+     */
+    private fun paymentConfirmation() = parsedDue(
+        amount = BigDecimal("900.00"),
+        dueDate = LocalDate.of(2026, 9, 16)
+    ).copy(paymentConfirmed = true)
 
     // -----------------------------------------------------------------------------------------
     // a — ignore rules
@@ -178,6 +216,75 @@ class EmailTransactionIngestorTest {
         runBlocking { ingestor.ingest(emailDao.seed(emailRow())) }
 
         assertEquals(NoticeKind.AUTOPAY_UPCOMING, dueSourceDao.rows.single().noticeKind)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // b, step 7 — "payment received" notices
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    fun `a payment confirmation records a PAYMENT_CONFIRMED source on the bill it cleared`() {
+        // The bill first, as it would have arrived weeks earlier.
+        dueParsers.dues = { listOf(parsedDue()) }
+        runBlocking { ingestor.ingest(emailDao.seed(emailRow(id = 1))) }
+
+        dueParsers.dues = { listOf(paymentConfirmation()) }
+        val result = runBlocking { ingestor.ingest(emailDao.seed(emailRow(id = 2))) }
+
+        assertEquals(listOf(7L), result.dueRowIds)
+        val notice = dueSourceDao.rows.single { it.emailMessageId == 2L }
+        assertEquals(7L, notice.dueId)
+        assertEquals(NoticeKind.PAYMENT_CONFIRMED, notice.noticeKind)
+        // What the sender claimed is kept on the source row, which is where spec 26's
+        // UNMATCHED_PAYMENT_NOTICE reads it back from.
+        assertEquals(BigDecimal("900.00"), notice.amountSeen)
+    }
+
+    @Test
+    fun `a payment confirmation for a bill nobody has seen creates no due`() {
+        // §20.4 step 7: the notice annotates a due, it never invents one. A row created here
+        // would carry a payment date as its due date and the amount paid as its amount — and
+        // step h would then settle the payment against that invention.
+        dueParsers.dues = { listOf(paymentConfirmation()) }
+
+        val result = runBlocking { ingestor.ingest(emailDao.seed(emailRow())) }
+
+        assertEquals(emptyList<Long>(), result.dueRowIds)
+        assertEquals(0, dueSourceDao.rows.size)
+        assertEquals(0, dueWriter.written.size)
+        assertFalse(log.entries.toString(), log.entries.contains("upsertDue"))
+    }
+
+    @Test
+    fun `a payment confirmation does not settle the due by itself`() {
+        dueParsers.dues = { listOf(parsedDue()) }
+        runBlocking { ingestor.ingest(emailDao.seed(emailRow(id = 1))) }
+
+        // The mail confirms a payment and carries no transaction Fin can read — the case the
+        // spec is about, where the money left an account the app cannot see.
+        dueParsers.dues = { listOf(paymentConfirmation()) }
+        settler.settles = { 7L }
+        val result = runBlocking { ingestor.ingest(emailDao.seed(emailRow(id = 2))) }
+
+        assertNull(result.settledDueId)
+        assertTrue(settler.seen.toString(), settler.seen.isEmpty())
+    }
+
+    @Test
+    fun `the payment a confirmation describes still settles its bill through the transaction`() {
+        dueParsers.dues = { listOf(parsedDue()) }
+        runBlocking { ingestor.ingest(emailDao.seed(emailRow(id = 1))) }
+
+        // CRED's C2 and ICICI's I2 are read by both a due parser and a transaction parser. The
+        // notice annotates; the transaction settles — and settlement is unchanged by any of it.
+        dueParsers.dues = { listOf(paymentConfirmation()) }
+        transactionParsers.reader = { parsedTransaction() }
+        settler.settles = { 7L }
+
+        val result = runBlocking { ingestor.ingest(emailDao.seed(emailRow(id = 2))) }
+
+        assertEquals(7L, result.settledDueId)
+        assertEquals(1, settler.seen.size)
     }
 
     // -----------------------------------------------------------------------------------------
@@ -353,6 +460,168 @@ class EmailTransactionIngestorTest {
         val bank = sourceDao.rows.single { it.sourceRef == "1" }
         assertFalse("the receipt steps down", receipt.isPrimary)
         assertTrue("the bank alert takes over", bank.isPrimary)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // §14.5 — an own-account transfer is one TRANSFER, not an expense plus an income
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    fun `the credit leg of an own transfer re-types the stored debit into one TRANSFER`() {
+        store.rows[11] = storedTransaction(
+            id = 11,
+            type = TransactionType.EXPENSE,
+            bankName = "HDFC Bank",
+            accountNumber = "1234",
+            reference = INGEST_REFERENCE,
+            dateTime = at(18, 2)
+        )
+        transactionParsers.reader = {
+            parsedTransaction(
+                type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                bankName = "Axis Bank",
+                sender = INGEST_OTHER_BANK_SENDER,
+                accountLast4 = "5678",
+                reference = INGEST_REFERENCE,
+                toAccount = "5678",
+                occurredAt = at(18, 30)
+            )
+        }
+
+        val result = runBlocking {
+            ingestor.ingest(emailDao.seed(emailRow(from = INGEST_OTHER_BANK_SENDER)))
+        }
+
+        assertTrue("one movement is one row", result.linkedTwin)
+        assertFalse(result.createdTransaction)
+        assertEquals(MatchRule.TRANSFER_LINK, sourceDao.rows.single().matchRule)
+        // The hole this closes: without the re-typing the survivor stays EXPENSE, and every total
+        // goes on counting the owner's own money as spending (spec 14 §14.5).
+        assertEquals(TransactionType.TRANSFER, store.rows.getValue(11).transactionType)
+    }
+
+    @Test
+    fun `a credit banked as INCOME stops counting as income once its debit arrives`() {
+        store.rows[11] = storedTransaction(
+            id = 11,
+            type = TransactionType.INCOME,
+            category = "Income",
+            merchantName = "SOMEONE",
+            bankName = "Axis Bank",
+            accountNumber = "5678",
+            reference = INGEST_REFERENCE,
+            toAccount = "5678",
+            dateTime = at(18, 2)
+        )
+        transactionParsers.reader = {
+            parsedTransaction(
+                type = com.pennywiseai.parser.core.TransactionType.TRANSFER,
+                bankName = "HDFC Bank",
+                accountLast4 = "1234",
+                reference = INGEST_REFERENCE,
+                fromAccount = "1234",
+                toAccount = "Axis Bank",
+                occurredAt = at(18, 30)
+            )
+        }
+
+        val result = runBlocking { ingestor.ingest(emailDao.seed(emailRow())) }
+
+        assertTrue(result.linkedTwin)
+        assertEquals(MatchRule.TRANSFER_LINK, sourceDao.rows.single().matchRule)
+
+        val merged = store.rows.getValue(11)
+        assertEquals(TransactionType.TRANSFER, merged.transactionType)
+        // §14.3 L5: the surviving row names both ends, and only from what a parser read.
+        assertEquals("1234", merged.fromAccount)
+        assertEquals("5678", merged.toAccount)
+        // §14.4 is still absolute about the category: a merge never re-categorises, so the stale
+        // label outlives the re-typing and screen 45 is where the user fixes it.
+        assertEquals("Income", merged.category)
+    }
+
+    @Test
+    fun `with no shared reference it is the own-account registry that pairs the two legs`() {
+        seedTransferLegs()
+
+        val result = runBlocking {
+            ingestorWith(withOwnAccounts()).ingest(emailDao.seed(emailRow()))
+        }
+
+        // Both legs are typed TRANSFER, so only the accounts they name can tell them apart.
+        assertTrue(result.linkedTwin)
+        assertEquals(MatchRule.TRANSFER_LINK, sourceDao.rows.single().matchRule)
+        assertEquals(TransactionType.TRANSFER, store.rows.getValue(11).transactionType)
+    }
+
+    @Test
+    fun `the same two legs stay apart when neither account is known to be the owner's`() {
+        seedTransferLegs()
+
+        // The same pair on the default config: `settings.accounts.own` is empty, so nothing says
+        // these two banks belong to one person and L5's reference-less branch must not fire.
+        val result = runBlocking { ingestor.ingest(emailDao.seed(emailRow())) }
+
+        assertTrue(result.createdTransaction)
+        assertEquals(TransactionType.TRANSFER, store.rows.getValue(11).transactionType)
+        assertEquals(42L, result.transactionId)
+    }
+
+    @Test
+    fun `an ordinary twin merge leaves the type where it was`() {
+        store.rows[11] = storedTransaction(
+            id = 11,
+            type = TransactionType.CREDIT,
+            reference = null,
+            dateTime = at(18, 2)
+        )
+        transactionParsers.reader = { parsedTransaction(occurredAt = at(18, 30)) }
+
+        runBlocking { ingestor.ingest(emailDao.seed(emailRow())) }
+
+        // Only L5 says "these are the two ends of one movement". Every other layer says "this is
+        // the same event, seen twice", and re-typing on one of those would rewrite real history.
+        assertEquals(MatchRule.AMOUNT_WINDOW, sourceDao.rows.single().matchRule)
+        assertEquals(TransactionType.CREDIT, store.rows.getValue(11).transactionType)
+    }
+
+    /** The owner's two banks, as `RoomOwnAccountSource` would report them. */
+    private fun withOwnAccounts() = IngestConfig(
+        dedup = DedupConfig(
+            ownAccounts = listOf(
+                OwnAccount(bank = "HDFC Bank", last4 = "1234"),
+                OwnAccount(bank = "Axis Bank", last4 = "5678")
+            )
+        )
+    )
+
+    /**
+     * A transfer whose two legs carry no reference at all: the Axis credit already stored, and the
+     * HDFC debit about to arrive. Both are typed TRANSFER, five minutes apart, and each names the
+     * account the money left and the one it reached — which is all there is to tell them apart.
+     */
+    private fun seedTransferLegs() {
+        store.rows[11] = storedTransaction(
+            id = 11,
+            type = TransactionType.TRANSFER,
+            bankName = "Axis Bank",
+            accountNumber = "5678",
+            reference = null,
+            fromAccount = "HDFC Bank",
+            toAccount = "5678",
+            dateTime = at(18, 25)
+        )
+        transactionParsers.reader = {
+            parsedTransaction(
+                type = com.pennywiseai.parser.core.TransactionType.TRANSFER,
+                bankName = "HDFC Bank",
+                accountLast4 = "1234",
+                reference = null,
+                fromAccount = "1234",
+                toAccount = "Axis Bank",
+                occurredAt = at(18, 30)
+            )
+        }
     }
 
     // -----------------------------------------------------------------------------------------

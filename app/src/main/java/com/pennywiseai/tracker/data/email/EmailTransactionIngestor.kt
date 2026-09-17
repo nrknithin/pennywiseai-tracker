@@ -7,7 +7,6 @@ import com.pennywiseai.parser.core.email.EmailSenderRegistry
 import com.pennywiseai.parser.core.email.IgnoreOutcome
 import com.pennywiseai.parser.core.email.IgnoreRules
 import com.pennywiseai.parser.core.email.SenderMapping
-import com.pennywiseai.parser.core.email.due.DueEscalation
 import com.pennywiseai.parser.core.email.due.DueParserFactory
 import com.pennywiseai.parser.core.email.due.ParsedDue
 import com.pennywiseai.tracker.data.database.dao.DueDao
@@ -33,7 +32,9 @@ import com.pennywiseai.tracker.domain.engine.DedupConfig
 import com.pennywiseai.tracker.domain.engine.DedupDecision
 import com.pennywiseai.tracker.domain.engine.DedupEngine
 import com.pennywiseai.tracker.domain.engine.DedupInput
+import com.pennywiseai.tracker.domain.engine.DueMergeEngine
 import com.pennywiseai.tracker.domain.engine.MessageIdentity
+import com.pennywiseai.tracker.domain.engine.MoneyDirection
 import com.pennywiseai.tracker.domain.engine.SourceFingerprint
 import java.math.BigDecimal
 import java.time.Clock
@@ -231,6 +232,21 @@ data class DueUpsert(
  */
 interface DueWriter {
     suspend fun upsertFromParsed(parsed: ParsedDue, emailMessageId: Long): DueUpsert
+
+    /**
+     * Spec 20 §20.4 step 7: the same merge, minus step 3's insert.
+     *
+     * A "payment received / thank you for paying" notice (`ParsedDue.paymentConfirmed`) is
+     * evidence *about* a bill, never a bill. If nothing on file describes the bill it cleared,
+     * the honest answer is that there is no due to annotate — inserting one would put a row in
+     * Pending whose due date is really a payment date and whose amount is really an amount
+     * paid, and the settler would then match the payment to that invention instead of to the
+     * statement it actually cleared. The mail is not lost either way: it stays in
+     * `email_messages`, and the payment itself is still saved as a transaction by step g.
+     *
+     * @return where the notice landed, or null when no due describes this bill.
+     */
+    suspend fun mergeIntoExisting(parsed: ParsedDue, emailMessageId: Long): DueUpsert?
 }
 
 /**
@@ -364,7 +380,16 @@ class EmailTransactionIngestor(
         }
         val dueRowIds = mutableListOf<Long>()
         for (due in parsedDues) {
-            val upsert = dues.upsertFromParsed(due, row.id)
+            // §20.4 step 7. A payment confirmation annotates a due; it never creates one, and
+            // it never settles one — see [DueWriter.mergeIntoExisting]. When nothing on file
+            // describes the bill, the notice records nothing and the mail carries on to the
+            // transaction parsers, which is where its money is read.
+            val upsert =
+                if (due.paymentConfirmed) {
+                    dues.mergeIntoExisting(due, row.id) ?: continue
+                } else {
+                    dues.upsertFromParsed(due, row.id)
+                }
             dueRowIds += upsert.dueRowId
             recordDueSource(row, due, upsert)
         }
@@ -442,6 +467,11 @@ class EmailTransactionIngestor(
         // Instalment loans (23) and subscription detection (21) are M2/M4 and are deliberately
         // not stubbed: a stub that silently does nothing is harder to notice than an absence.
         // The plan is marked dirty once per run by the worker — see [IngestResult.changedMoney].
+        //
+        // Spec 20 §20.4 step 7: this — a saved transaction — is the only thing that settles a
+        // due, and a payment-confirmation notice read in step b is deliberately not it. The
+        // notice created no due for this call to find, so what settles here is the statement the
+        // payment actually cleared, exactly as it did before confirmations were read at all.
         val settledDueId = transactions.byId(transactionId)?.let { settler.trySettle(it) }
 
         return finish(
@@ -497,8 +527,11 @@ class EmailTransactionIngestor(
         val existing = transactions.byId(transactionId)
         val candidate = candidates.firstOrNull { it.transactionId == transactionId }
         val merged =
-            if (existing != null && candidate != null) enrich(existing, candidate, input, parsed)
-            else existing
+            if (existing != null && candidate != null) {
+                enrich(existing, candidate, input, parsed, decision.rule)
+            } else {
+                existing
+            }
 
         val settledDueId = merged?.let { settler.trySettle(it) }
 
@@ -514,12 +547,15 @@ class EmailTransactionIngestor(
     }
 
     /**
-     * Spec 14 §14.4, applied.
+     * Spec 14 §14.4, applied — plus §14.5's re-typing, which is the one thing a merge changes
+     * rather than fills.
      *
      * Every field is filled through [DedupEngine.enrich] or [DedupEngine.fill], both of which mean
      * "take the incoming value only when the existing one is null". **Category is absent on
-     * purpose** — §14.4 says a merge never changes it — and so is `description`, because
-     * `ParsedTransaction` carries none for the email channel to copy.
+     * purpose** — §14.4 says a merge never changes it, even when the type below does change, so a
+     * re-typed transfer keeps whatever category its first leg was filed under until the user edits
+     * it on screen 45 — and so is `description`, because `ParsedTransaction` carries none for the
+     * email channel to copy.
      *
      * `updated_at` is bumped only when something actually changed, so re-processing a message does
      * not make an untouched row look edited.
@@ -528,18 +564,44 @@ class EmailTransactionIngestor(
         existing: TransactionEntity,
         candidate: DedupCandidate,
         input: DedupInput,
-        parsed: ParsedTransaction
+        parsed: ParsedTransaction,
+        rule: MatchRule
     ): TransactionEntity {
         val enrichment = dedup.enrich(input, candidate)
 
+        // Spec 14 §14.5: the debit and the credit of an own-account transfer are one TRANSFER,
+        // never an expense plus an income. L5 is the only layer that pairs *opposite* legs, so its
+        // rule is exactly the statement "these two records are the two ends of one movement" —
+        // and the engine, not this class, is what decided it (spec 02 §2.3).
+        //
+        // §14.4's list of mergeable fields does not mention the type, and §14.3 L5 promises "one
+        // TRANSFER with from/to accounts": followed literally, §14.4 would leave the survivor
+        // typed by whichever leg happened to arrive first, so half of every own transfer would
+        // keep counting as spend and the other half as income — the reading that loses data.
+        // Recorded in docs/FORK-CHANGES.md.
+        val isTransferLink = rule == MatchRule.TRANSFER_LINK
+
         val enriched = existing.copy(
+            transactionType =
+                if (isTransferLink) TransactionType.TRANSFER else existing.transactionType,
             reference = dedup.fill(existing.reference, enrichment.reference),
             // Non-null in Room, so the hole is spelled differently: `candidate.merchant` was built
             // with the mapper's placeholder normalised away, which is what lets the engine see it
             // as empty and offer a name. Null here means "keep what is already there".
             merchantName = enrichment.merchant ?: existing.merchantName,
             accountNumber = dedup.fill(existing.accountNumber, enrichment.accountLast4),
-            balanceAfter = dedup.fill(existing.balanceAfter, parsed.balance)
+            balanceAfter = dedup.fill(existing.balanceAfter, parsed.balance),
+            // §14.3 L5's "with from/to accounts". Additive like everything else here, and only
+            // from what a parser actually read: a transfer whose legs never named their two sides
+            // keeps null and the UI shows "—" (constraint C7), rather than gaining a side that
+            // was inferred. Left alone for every other rule — the two records are then one event
+            // seen twice, and §14.4 does not license moving its accounts around.
+            fromAccount =
+                if (isTransferLink) dedup.fill(existing.fromAccount, parsed.fromAccount)
+                else existing.fromAccount,
+            toAccount =
+                if (isTransferLink) dedup.fill(existing.toAccount, parsed.toAccount)
+                else existing.toAccount
         )
         if (enriched == existing) return existing
 
@@ -579,10 +641,14 @@ class EmailTransactionIngestor(
             orderId = null,
             isFromCard = parsed.isFromCard,
             fromAccount = parsed.fromAccount,
-            // Which leg of a transfer this is (spec 14 §14.5) needs `settings.accounts.own`, a
-            // screen-42 editor in M2. Null means "read the leg off the type", which is right for
-            // everything except the credit side of an own-account transfer.
-            direction = null,
+            // Which leg of a transfer this is (spec 14 §14.5). See [legOf]: null still means
+            // "read the leg off the type", which is right for everything except a TRANSFER.
+            direction = legOf(
+                type = parsed.type.toEntityType(),
+                account = parsed.accountLast4,
+                fromAccount = parsed.fromAccount,
+                toAccount = parsed.toAccount
+            ),
             identity = MessageIdentity(
                 sender = row.fromAddress,
                 messageId = row.messageId,
@@ -672,8 +738,48 @@ class EmailTransactionIngestor(
                 )
             },
             sameTemplateSourceCount = sameTemplate,
-            isGatewayOrigin = isGatewayOrigin(sources)
+            isGatewayOrigin = isGatewayOrigin(sources),
+            // The stored side of the same question [dedupInput] answers for the incoming record.
+            // Without it a transfer whose stored leg is already typed TRANSFER — because a parser
+            // knew the owner's VPAs, or because an earlier merge re-typed it — would read as
+            // "money out" on both sides, and L5, which needs opposite legs, could never fire.
+            direction = legOf(
+                type = entity.transactionType,
+                account = entity.accountNumber,
+                fromAccount = entity.fromAccount,
+                toAccount = entity.toAccount
+            )
         )
+    }
+
+    /**
+     * Which leg of a movement a record is, when its [TransactionType] cannot say (spec 14 §14.5).
+     *
+     * §14.2 normalisation rather than a dedup rule — the layers that read it live in [DedupEngine]
+     * (spec 02 §2.3) and all this does is restate a fact the parser already recorded. Once §14.5
+     * has typed *both* ends of an own-account transfer TRANSFER, the type tells the two apart no
+     * better than a coin; the accounts do. Spec 12 §12.1's H1/H2 pair is the shape: the debit leg
+     * names the account the money left as `from_account`, the credit leg names the account it
+     * arrived in as `to_account`, and both sit on that same account. So the leg is whichever of
+     * the two sides is the record's own account.
+     *
+     * Null — "read the leg off the type" — for anything else, including a TRANSFER that named
+     * neither side or named both: guessing there would hand L5 a pairing nobody read off a
+     * message (constraint C7), and the cost of not guessing is a transfer left as two rows the
+     * user can merge by hand (§14.6).
+     */
+    private fun legOf(
+        type: TransactionType,
+        account: String?,
+        fromAccount: String?,
+        toAccount: String?
+    ): MoneyDirection? {
+        if (type != TransactionType.TRANSFER) return null
+        val own = accountToken(account) ?: return null
+        val arrivedHere = accountToken(toAccount) == own
+        val leftHere = accountToken(fromAccount) == own
+        if (arrivedHere == leftHere) return null
+        return if (arrivedHere) MoneyDirection.IN else MoneyDirection.OUT
     }
 
     /**
@@ -745,13 +851,13 @@ class EmailTransactionIngestor(
      *
      * A reminder that says OVERDUE is worth surfacing even when today is still before the due
      * date — the sender knows something the app does not.
+     *
+     * The mapping itself lives in [DueMergeEngine.noticeKindOf] rather than here. This file
+     * *writes* `due_sources.notice_kind` and the engine *ranks* it, and the two carried
+     * identical hand-copied `when`s with nothing pinning them together — which is how
+     * `PAYMENT_CONFIRMED` came to exist in the enum while no code path could produce one.
      */
-    private fun noticeKindOf(parsed: ParsedDue): NoticeKind = when (parsed.escalation) {
-        DueEscalation.OVERDUE -> NoticeKind.OVERDUE
-        DueEscalation.DUE_TODAY -> NoticeKind.DUE_TODAY
-        DueEscalation.DUE_SOON -> NoticeKind.REMINDER
-        null -> if (parsed.autoPay) NoticeKind.AUTOPAY_UPCOMING else NoticeKind.STATEMENT
-    }
+    private fun noticeKindOf(parsed: ParsedDue): NoticeKind = DueMergeEngine.noticeKindOf(parsed)
 
     // -----------------------------------------------------------------------------------------
     // Bookkeeping
@@ -852,6 +958,16 @@ class EmailTransactionIngestor(
         /** §14.2: "reference = digits only". */
         private fun digitsOnly(raw: String?): String? =
             raw?.filter { it.isDigit() }?.takeIf { it.isNotEmpty() }
+
+        /**
+         * An account as written on a record, reduced so that case, spacing and punctuation cannot
+         * make one instrument look like two (`"1234"` == `" 1234"`, `"Axis"` == `"AXIS"`).
+         *
+         * Only ever compared against another token of the same kind, never parsed: the counterpart
+         * side of a transfer is a bank name as often as it is a number, and it is allowed to be.
+         */
+        private fun accountToken(raw: String?): String? =
+            raw?.lowercase()?.filter { it.isLetterOrDigit() }?.takeIf { it.isNotEmpty() }
 
         /**
          * Reduces a refusal message to a short upper-case token.

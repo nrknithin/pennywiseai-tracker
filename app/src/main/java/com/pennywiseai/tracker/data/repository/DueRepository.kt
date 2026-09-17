@@ -62,10 +62,25 @@ class DueRepository @Inject constructor(
         parsed: ParsedDue,
         emailMessageId: Long,
         config: DueMergeConfig
-    ): DueUpsert {
+    ): DueUpsert =
+        mergeIntoExisting(parsed, emailMessageId, config) ?: insert(parsed, emailMessageId)
+
+    /**
+     * §20.4 step 7's merge-only path. Same steps 2 and 4, without step 3's insert.
+     *
+     * Which readings come through here is the ingestor's decision, not this file's — see
+     * [DueWriter.mergeIntoExisting] for why a payment confirmation must never create a row.
+     */
+    override suspend fun mergeIntoExisting(parsed: ParsedDue, emailMessageId: Long): DueUpsert? =
+        mergeIntoExisting(parsed, emailMessageId, DueMergeConfig())
+
+    suspend fun mergeIntoExisting(
+        parsed: ParsedDue,
+        emailMessageId: Long,
+        config: DueMergeConfig
+    ): DueUpsert? {
         val candidates = candidatesFor(parsed, config)
-        val target = engine.chooseTarget(candidates, parsed, config)
-            ?: return insert(parsed, emailMessageId)
+        val target = engine.chooseTarget(candidates, parsed, config) ?: return null
 
         // §20.4 step 4. An unchanged row is not written: a re-processed mail must not bump
         // `updated_at` and make an untouched due look as if it had just moved.

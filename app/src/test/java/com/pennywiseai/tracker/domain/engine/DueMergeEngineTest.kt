@@ -830,6 +830,173 @@ class DueMergeEngineTest {
     }
 
     // =========================================================================================
+    // Step 7 — "payment received" notices
+    // =========================================================================================
+
+    @Test
+    fun `every notice kind the schema stores is produced by some reading`() {
+        // The pin the two hand-copied `when`s never had. `PAYMENT_CONFIRMED` sat in the enum
+        // from the first commit with no reading able to produce one; this fails the day another
+        // value is added to `NoticeKind` and nothing maps onto it.
+        val produced = setOf(
+            DueMergeEngine.noticeKindOf(statement()),
+            DueMergeEngine.noticeKindOf(statement(escalation = DueEscalation.DUE_SOON)),
+            DueMergeEngine.noticeKindOf(statement(escalation = DueEscalation.DUE_TODAY)),
+            DueMergeEngine.noticeKindOf(statement(escalation = DueEscalation.OVERDUE)),
+            DueMergeEngine.noticeKindOf(statement(autoPay = true)),
+            DueMergeEngine.noticeKindOf(confirmation())
+        )
+        assertEquals(NoticeKind.entries.toSet(), produced)
+    }
+
+    @Test
+    fun `the engine and the ingestor read a notice through one mapping`() {
+        // `EmailTransactionIngestor.noticeKindOf` is this function; the instance member the
+        // engine ranks with is the same answer, not a second copy of it.
+        for (parsed in listOf(statement(), statement(autoPay = true), confirmation())) {
+            assertEquals(DueMergeEngine.noticeKindOf(parsed), engine.noticeKind(parsed))
+        }
+    }
+
+    @Test
+    fun `a payment confirmation is recorded as one, whatever urgency it was framed with`() {
+        // A bank confirming payment of a bill it had already called overdue is still confirming
+        // a payment: the two are different axes (§20.4 step 7).
+        assertEquals(NoticeKind.PAYMENT_CONFIRMED, engine.noticeKind(confirmation()))
+        assertEquals(
+            NoticeKind.PAYMENT_CONFIRMED,
+            engine.noticeKind(confirmation(escalation = DueEscalation.OVERDUE))
+        )
+    }
+
+    @Test
+    fun `the issuer's own payment confirmation ranks as a reminder, not a statement`() {
+        assertEquals(NoticePrecedence.ISSUER_REMINDER, engine.precedenceOf(confirmation()))
+        // An aggregator's confirmation is still the aggregator's: CRED reporting a payment
+        // does not make CRED the biller (§20.4 step 5).
+        assertEquals(NoticePrecedence.CRED, engine.precedenceOf(confirmation(source = "CRED")))
+    }
+
+    @Test
+    fun `a payment confirmation moves none of the due's figures`() {
+        val existing = DueMergeEngine.Candidate(
+            dueRow(amount = BigDecimal("4321.50"), dueDate = LocalDate.of(2026, 10, 1)),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        // The user paid the minimum, so the figure the notice states is not the bill.
+        val outcome = engine.merge(existing, confirmation(amount = BigDecimal("900.00")))
+
+        assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+        assertEquals(LocalDate.of(2026, 10, 1), outcome.due.dueDate)
+        assertEquals(DueStatus.OPEN, outcome.due.status)
+        assertFalse("a confirmation tells the row nothing new", outcome.changed)
+    }
+
+    @Test
+    fun `a payment confirmation does not fill an amount nobody has stated`() {
+        // The null-fill of §20.4 step 4 is not a way in: filling the bill with the amount paid
+        // would print a figure nobody billed (constraint C7).
+        val existing = DueMergeEngine.Candidate(
+            dueRow(
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                note = DueMergeEngine.AMOUNT_NOT_STATED_NOTE
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(existing, confirmation(amount = BigDecimal("900.00")))
+
+        assertEquals(BigDecimal.ZERO, outcome.due.amount)
+        assertFalse(outcome.due.amountStated)
+        assertEquals(DueMergeEngine.AMOUNT_NOT_STATED_NOTE, outcome.due.note)
+    }
+
+    @Test
+    fun `a payment confirmation does not caption the due with its own wording`() {
+        val existing = DueMergeEngine.Candidate(dueRow(note = null), emptyList())
+
+        val outcome = engine.merge(existing, confirmation())
+
+        assertNull("the caption describes the bill, not the payment", outcome.due.note)
+    }
+
+    @Test
+    fun `a payment confirmation never re-opens a due the app dismissed`() {
+        val existing = DueMergeEngine.Candidate(
+            dueRow(status = DueStatus.DISMISSED, autoDismissed = true, amount = BigDecimal.ZERO),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(existing, confirmation(amount = BigDecimal("900.00")))
+
+        assertEquals(DueStatus.DISMISSED, outcome.due.status)
+    }
+
+    @Test
+    fun `a payment reaches the bill it cleared weeks earlier`() {
+        // A card bill dated 1 October, paid on 4 September. As a *bill* reading those two dates
+        // are different dues; as a payment the second is evidence about the first.
+        val bill = dueRow(dueDate = LocalDate.of(2026, 10, 1))
+        assertTrue(engine.isCandidate(bill, confirmation(paidOn = LocalDate.of(2026, 9, 4))))
+        assertFalse(engine.isCandidate(bill, statement(dueDate = LocalDate.of(2026, 9, 4))))
+    }
+
+    @Test
+    fun `a payment further out than the settlement window is about some other bill`() {
+        val bill = dueRow(dueDate = LocalDate.of(2026, 10, 1))
+        assertFalse(engine.isCandidate(bill, confirmation(paidOn = LocalDate.of(2026, 6, 1))))
+    }
+
+    @Test
+    fun `a payment is matched to the nearest bill, not the best-attested one`() {
+        // Two consecutive statements for one card are both inside the payment window. Step 4's
+        // "most sources" would hand the payment to the wrong month; §20.5's nearest-date rule
+        // is the one that means anything here.
+        val lastMonth = DueMergeEngine.Candidate(
+            dueRow(id = 1, dueId = "older-bill", dueDate = LocalDate.of(2026, 9, 5)),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+        val thisMonth = DueMergeEngine.Candidate(
+            dueRow(id = 2, dueId = "newer-bill", dueDate = LocalDate.of(2026, 10, 1)),
+            listOf(
+                source(2, AXIS_SENDER, NoticeKind.STATEMENT),
+                source(2, CRED_SENDER, NoticeKind.STATEMENT),
+                source(2, AMAZON_PAY_SENDER, NoticeKind.REMINDER)
+            )
+        )
+
+        val target = engine.chooseTarget(
+            listOf(thisMonth, lastMonth),
+            confirmation(paidOn = LocalDate.of(2026, 9, 4))
+        )
+
+        assertEquals(1L, target?.due?.id)
+    }
+
+    @Test
+    fun `two readings of one bill still go to the best-attested row`() {
+        // The counterpart of the test above: the nearest-date rule is for payments only, and
+        // step 4's contest is untouched for the bills it was written for.
+        val thin = DueMergeEngine.Candidate(
+            dueRow(id = 1, dueId = "thin", dueDate = LocalDate.of(2026, 10, 1)),
+            emptyList()
+        )
+        val attested = DueMergeEngine.Candidate(
+            dueRow(id = 2, dueId = "attested", dueDate = LocalDate.of(2026, 10, 2)),
+            listOf(source(2, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val target = engine.chooseTarget(
+            listOf(thin, attested),
+            statement(dueDate = LocalDate.of(2026, 10, 1))
+        )
+
+        assertEquals(2L, target?.due?.id)
+    }
+
+    // =========================================================================================
     // The two DueKind vocabularies
     // =========================================================================================
 
@@ -884,6 +1051,25 @@ class DueMergeEngineTest {
         source = source,
         description = description
     )
+
+    /**
+     * A "payment received" notice — spec 20 §20.4 step 7.
+     *
+     * Two fields are not what their names say, and that is the point of the flag: the amount is
+     * what was *paid*, and the date is when it was paid. Neither template states a due date.
+     */
+    private fun confirmation(
+        amount: BigDecimal? = BigDecimal("900.00"),
+        paidOn: LocalDate = LocalDate.of(2026, 9, 4),
+        escalation: DueEscalation? = null,
+        source: String = "AXIS"
+    ): ParsedDue = statement(
+        amount = amount,
+        dueDate = paidOn,
+        escalation = escalation,
+        source = source,
+        description = "Payment confirmed"
+    ).copy(paymentConfirmed = true)
 
     /** CRED's copy of the same card bill — the issuer it names, never CRED itself. */
     private fun credNotice(

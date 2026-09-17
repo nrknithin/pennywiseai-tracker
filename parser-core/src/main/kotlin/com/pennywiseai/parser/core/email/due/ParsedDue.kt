@@ -71,6 +71,28 @@ data class ParsedDue(
     val escalation: DueEscalation? = null,
 
     /**
+     * True when the sender is *confirming* a payment instead of asking for one: CRED's
+     * "payment successful" mail (spec 12 §12.6 C2) and ICICI's "payment received on your
+     * credit card" (spec 12 §12.3 I2).
+     *
+     * Deliberately a flag of its own rather than a fourth [DueEscalation] rung. Escalation is
+     * urgency — REMINDER < DUE_TODAY < OVERDUE — and a bill somebody has just paid has none;
+     * putting it on that ladder would let a paid bill outrank an overdue one.
+     *
+     * What the app does with it is spec 20 §20.4 step 7: the notice records a
+     * `PAYMENT_CONFIRMED` source against the due and **never settles it by itself**, because
+     * the mail is only evidence that money moved — possibly from an account Fin cannot see.
+     * Settlement stays the job of a saved transaction (§20.5), and both templates above are
+     * read by a transaction parser too, so the payment that *is* visible still settles.
+     *
+     * A confirmation therefore contributes no figure to the due row: [amount] here is the
+     * amount *paid*, not the amount billed, and the two differ whenever the user paid the
+     * minimum. It is carried so `due_sources.amount_seen` records what the sender claimed,
+     * which is what M7's `UNMATCHED_PAYMENT_NOTICE` alert (spec 26) reads back.
+     */
+    val paymentConfirmed: Boolean = false,
+
+    /**
      * Which sender this reading came from — "CRED", "AMAZON_PAY", "BILLDESK", "HDFC".
      * Recorded on the due so the detail screen can show that three senders agreed, and so
      * a merge can prefer the issuer's own figure over an aggregator's.
