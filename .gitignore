@@ -104,3 +104,7 @@ iosApp/fastlane/report.xml
 
 # git worktrees (superpowers SDD)
 .worktrees/
+
+# Build specification for the Fin fork - derived from a personal mailbox,
+# so it stays local (see CLAUDE.md hard constraint 4: no PII in the repo).
+spec/

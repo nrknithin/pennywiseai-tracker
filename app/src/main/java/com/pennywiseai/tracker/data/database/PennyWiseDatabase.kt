@@ -32,6 +32,17 @@ import com.pennywiseai.tracker.data.database.dao.SubscriptionDao
 import com.pennywiseai.tracker.data.database.dao.TransactionDao
 import com.pennywiseai.tracker.data.database.dao.TransactionSplitDao
 import com.pennywiseai.tracker.data.database.dao.UnrecognizedSmsDao
+// Fin (M1) — the email channel and its dues.
+import com.pennywiseai.tracker.data.database.dao.DueDao
+import com.pennywiseai.tracker.data.database.dao.DueSourceDao
+import com.pennywiseai.tracker.data.database.dao.EmailMessageDao
+import com.pennywiseai.tracker.data.database.dao.SyncRunDao
+import com.pennywiseai.tracker.data.database.dao.TransactionSourceDao
+import com.pennywiseai.tracker.data.database.entity.DueEntity
+import com.pennywiseai.tracker.data.database.entity.DueSourceEntity
+import com.pennywiseai.tracker.data.database.entity.EmailMessageEntity
+import com.pennywiseai.tracker.data.database.entity.SyncRunEntity
+import com.pennywiseai.tracker.data.database.entity.TransactionSourceEntity
 import com.pennywiseai.tracker.data.database.entity.AccountBalanceEntity
 import com.pennywiseai.tracker.data.database.entity.ProfileEntity
 import com.pennywiseai.tracker.data.database.entity.TagEntity
@@ -64,7 +75,7 @@ import com.pennywiseai.tracker.data.database.entity.UnrecognizedSmsEntity
  * that needs to record the version it was exported against. Bump this in lock-
  * step with any schema change.
  */
-const val SCHEMA_VERSION = 62
+const val SCHEMA_VERSION = 63
 
 /**
  * The PennyWise Room database.
@@ -77,7 +88,11 @@ const val SCHEMA_VERSION = 62
  * @property autoMigrations List of automatic migrations between versions.
  */
 @Database(
-    entities = [TransactionEntity::class, SubscriptionEntity::class, ChatMessage::class, MerchantMappingEntity::class, MerchantAliasEntity::class, CategoryEntity::class, AccountBalanceEntity::class, UnrecognizedSmsEntity::class, CardEntity::class, RuleEntity::class, RuleApplicationEntity::class, ExchangeRateEntity::class, BudgetEntity::class, BudgetCategoryEntity::class, BudgetMonthSnapshotEntity::class, BudgetCategoryMonthSnapshotEntity::class, TransactionSplitEntity::class, BankNotificationEntity::class, LoanEntity::class, TransactionGroupEntity::class, ProfileEntity::class, TagEntity::class, TransactionTagCrossRef::class, RecurringTransactionEntity::class],
+    entities = [TransactionEntity::class, SubscriptionEntity::class, ChatMessage::class, MerchantMappingEntity::class, MerchantAliasEntity::class, CategoryEntity::class, AccountBalanceEntity::class, UnrecognizedSmsEntity::class, CardEntity::class, RuleEntity::class, RuleApplicationEntity::class, ExchangeRateEntity::class, BudgetEntity::class, BudgetCategoryEntity::class, BudgetMonthSnapshotEntity::class, BudgetCategoryMonthSnapshotEntity::class, TransactionSplitEntity::class, BankNotificationEntity::class, LoanEntity::class, TransactionGroupEntity::class, ProfileEntity::class, TagEntity::class, TransactionTagCrossRef::class, RecurringTransactionEntity::class,
+        // Fin (M1, v63) — the email channel. All five are new tables, so 62→63 is purely
+        // additive and Room generates the CREATE TABLE statements itself.
+        EmailMessageEntity::class, DueEntity::class, SyncRunEntity::class,
+        TransactionSourceEntity::class, DueSourceEntity::class],
     version = SCHEMA_VERSION,
     exportSchema = true,
     autoMigrations = [
@@ -129,7 +144,17 @@ const val SCHEMA_VERSION = 62
         AutoMigration(from = 55, to = 56),
         // 56→57 adds a nullable account_last4 column to subscriptions — a pure
         // additive change, so Room generates the ALTER TABLE automatically (#570).
-        AutoMigration(from = 56, to = 57)
+        AutoMigration(from = 56, to = 57),
+        // 62→63 is Fin's M1 migration: five new tables (email_messages, dues, sync_runs,
+        // transaction_sources, due_sources) and no change to any existing one, so Room
+        // generates it. Spec 03 §3.3 files the three source/run tables under M2 (v64), but
+        // the M1 sync pipeline writes all three from its first run — spec 11 §11.3 step 2
+        // opens a sync_runs row, and §11.4 steps b and f record due and transaction sources
+        // — so they land together here. What genuinely waits for M2 is the user-editable
+        // side: ignore_rules, sender_overrides and never_merge_pairs. Until then the
+        // compiled seeds in parser-core's IgnoreRules and EmailSenderRegistry serve, which
+        // is why both already accept overrides as parameters defaulting to empty.
+        AutoMigration(from = 62, to = 63)
     ]
 )
 @TypeConverters(Converters::class)
@@ -155,6 +180,13 @@ abstract class PennyWiseDatabase : RoomDatabase() {
     abstract fun profileDao(): ProfileDao
     abstract fun tagDao(): TagDao
     abstract fun recurringTransactionDao(): RecurringTransactionDao
+
+    // Fin (M1) — the email channel.
+    abstract fun emailMessageDao(): EmailMessageDao
+    abstract fun dueDao(): DueDao
+    abstract fun syncRunDao(): SyncRunDao
+    abstract fun transactionSourceDao(): TransactionSourceDao
+    abstract fun dueSourceDao(): DueSourceDao
 
     companion object {
         const val DATABASE_NAME = "pennywise_database"
