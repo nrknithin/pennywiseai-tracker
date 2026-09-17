@@ -143,7 +143,7 @@ class HDFCPreclosureDueParser : DueParser {
                 """$MONEY[\s\S]{0,60}?\btowards\s+(?:the\s+)?preclos\w*""",
                 RegexOption.IGNORE_CASE
             ),
-            // "we have preclosed your loan A/C 9911002233 for Rs. 2,53,471.86"
+            // "we have preclosed your loan A/C 4411002233 for Rs. 2,53,471.86"
             Regex(
                 """preclos\w*[\s\S]{0,120}?\bfor\s+$MONEY""",
                 RegexOption.IGNORE_CASE

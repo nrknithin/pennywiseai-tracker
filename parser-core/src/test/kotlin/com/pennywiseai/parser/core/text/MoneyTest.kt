@@ -31,10 +31,10 @@ class MoneyTest {
         Case("EMI template ungrouped", "21538.00", "21538.00"),
 
         // --- currency tokens --------------------------------------------------
-        Case("rupee sign", "\u20B9 1,845", "1599.00"),
+        Case("rupee sign", "\u20B9 1,845", "1845.00"),
         Case("Rs with period", "Rs. 14,660.00", "14660.00"),
         Case("Rs without period", "Rs 845", "845.00"),
-        Case("bare INR", "INR 214", "106.00"),
+        Case("bare INR", "INR 214", "214.00"),
         Case("HDFC double prefix", "Rs. INR 21,538.00", "21538.00"),
         Case("dollar sign", "$7.00", "7.00", "USD"),
         Case("USD code", "USD 7", "7.00", "USD"),

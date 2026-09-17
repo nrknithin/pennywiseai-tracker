@@ -287,6 +287,77 @@ class DedupEngineTest {
     }
 
     @Test
+    fun `the credit leg typed transfer still pairs with its debit instead of merging into it`() {
+        // DEFECT 2. §14.5 re-types this credit TRANSFER rather than INCOME so that moving savings
+        // between two own banks never counts as income. Read the leg off the type and both sides
+        // are "money out": L1 then merges them on their shared reference — recording UPI_REF and
+        // absorbing the credit into the debit — and L5, which wants opposite legs, never fires.
+        val debit = candidate(
+            id = 46,
+            bank = "HDFC Bank",
+            last4 = "1234",
+            type = TransactionType.TRANSFER,
+            reference = REFERENCE,
+            occurredAt = at(16, 10)
+        )
+        val credit = input(
+            bank = "Axis Bank",
+            last4 = "5678",
+            type = TransactionType.TRANSFER,
+            reference = REFERENCE,
+            occurredAt = at(16, 13),
+            parserId = "A1",
+            direction = MoneyDirection.IN
+        )
+
+        assertLink(MatchRule.TRANSFER_LINK, 46, engine.evaluate(credit, listOf(debit), defaults))
+    }
+
+    @Test
+    fun `two own accounts pair on time when both legs are typed transfer`() {
+        // DEFECT 2, without a reference to lean on: the leg is the only thing that can separate
+        // these two records, and L5 is the only layer that can join them.
+        val debit = candidate(
+            id = 47,
+            bank = "HDFC Bank",
+            last4 = "1234",
+            type = TransactionType.TRANSFER,
+            occurredAt = at(16, 10),
+            direction = MoneyDirection.OUT
+        )
+        val credit = input(
+            bank = "Axis Bank",
+            last4 = "5678",
+            type = TransactionType.TRANSFER,
+            occurredAt = at(16, 16),
+            parserId = "A1",
+            direction = MoneyDirection.IN
+        )
+
+        assertLink(MatchRule.TRANSFER_LINK, 47, engine.evaluate(credit, listOf(debit), ownAccounts))
+    }
+
+    @Test
+    fun `a transfer that does not say which leg it is reads as the debit side`() {
+        // The fallback, stated so it cannot change by accident: this app stores a transfer on the
+        // account the money left, so an unmarked TRANSFER is money out and twins the bank's own
+        // debit alert rather than pairing with it.
+        val debitAlert = candidate(
+            id = 48,
+            type = TransactionType.EXPENSE,
+            occurredAt = at(16, 10),
+            sources = listOf(source(channel = SourceChannel.SMS, parserId = "HDFCBankParser"))
+        )
+        val unmarked = input(
+            type = TransactionType.TRANSFER,
+            occurredAt = at(16, 25),
+            parserId = "H1"
+        )
+
+        assertLink(MatchRule.AMOUNT_WINDOW, 48, engine.evaluate(unmarked, listOf(debitAlert), defaults))
+    }
+
+    @Test
     fun `two own accounts link on amount and time when neither message carries a reference`() {
         val debit = candidate(
             id = 42,
@@ -462,22 +533,141 @@ class DedupEngineTest {
     }
 
     // -------------------------------------------------------------------------------------
-    // L0 — exact re-delivery
+    // L0 — exact re-delivery, and only that (§14.3 L0)
     // -------------------------------------------------------------------------------------
 
     @Test
-    fun `an identical body links however long ago it was seen`() {
+    fun `the same mail delivered twice links however far apart the two readings are dated`() {
+        // Gmail hands the mail back after a UIDVALIDITY reset: same Message-ID, same body. The
+        // two readings are dated 40 days apart only because the re-parse took a different date
+        // out of the body — L0 has no window, so that cannot matter.
         val existing = candidate(
             id = 1,
             occurredAt = at(9, 0).minusDays(40),
-            bodyHashes = setOf("other-hash", BODY_HASH),
-            sources = listOf(SourceFingerprint(SourceChannel.EMAIL, "H1")),
+            sources = listOf(
+                source(bodyHash = "other-hash", messageId = "<other-mail@example.com>"),
+                source(bodyHash = BODY_HASH, messageId = MESSAGE_ID)
+            ),
             sameTemplate = 3
         )
-        val redelivery = input(bodyHash = BODY_HASH, occurredAt = at(9, 0), parserId = "H1")
+        val redelivery = input(
+            bodyHash = BODY_HASH,
+            occurredAt = at(9, 0),
+            parserId = "H1",
+            identity = identity(messageId = MESSAGE_ID)
+        )
 
         // L0 outranks both guards on purpose: a re-delivery is the same message, not a twin.
         assertLink(MatchRule.HASH, 1, engine.evaluate(redelivery, listOf(existing), defaults))
+    }
+
+    @Test
+    fun `an sms restore replays a message and links on its sender and timestamp`() {
+        // An SMS has no Message-ID. The restore keeps the sender and the `date` column, which is
+        // what identifies the message when the stronger key is missing.
+        val existing = candidate(
+            id = 4,
+            occurredAt = at(9, 0),
+            sources = listOf(
+                source(
+                    channel = SourceChannel.SMS,
+                    parserId = "HDFCBankParser",
+                    bodyHash = BODY_HASH,
+                    sender = SMS_SENDER,
+                    receivedAt = at(9, 0)
+                )
+            )
+        )
+        val restored = input(
+            bodyHash = BODY_HASH,
+            occurredAt = at(9, 0),
+            channel = SourceChannel.SMS,
+            parserId = "HDFCBankParser",
+            identity = identity(sender = SMS_SENDER, receivedAt = at(9, 0))
+        )
+
+        assertLink(MatchRule.HASH, 4, engine.evaluate(restored, listOf(existing), defaults))
+    }
+
+    @Test
+    fun `a second charge whose template reads identically is not a re-delivery`() {
+        // DEFECT 1. A fixed subscription debit prints the same words and the same amount every
+        // month, so `body_hash` alone is equal for two genuinely separate charges. With L0's
+        // infinite window and no other guard, the second charge would be swallowed by the first
+        // and a month of money would disappear.
+        val firstCharge = candidate(
+            id = 5,
+            amount = "649.00",
+            occurredAt = at(9, 0),
+            sources = listOf(source(bodyHash = BODY_HASH, receivedAt = at(9, 0)))
+        )
+        val nextMonth = input(
+            amount = "649.00",
+            bodyHash = BODY_HASH,
+            occurredAt = at(9, 0).plusDays(30),
+            identity = identity(receivedAt = at(9, 0).plusDays(30))
+        )
+
+        assertEquals(
+            DedupDecision.NewTransaction,
+            engine.evaluate(nextMonth, listOf(firstCharge), defaults)
+        )
+    }
+
+    @Test
+    fun `an identical body from a different sender is not a re-delivery`() {
+        // DEFECT 1. Two senders can template the same words; one of them is not the other's copy.
+        val existing = candidate(
+            id = 6,
+            occurredAt = at(9, 0),
+            sources = listOf(source(bodyHash = BODY_HASH, receivedAt = at(9, 0)))
+        )
+        val lookalike = input(
+            bodyHash = BODY_HASH,
+            occurredAt = at(9, 0).plusDays(30),
+            identity = identity(sender = OTHER_SENDER, receivedAt = at(9, 0))
+        )
+
+        assertNull(engine.explain(lookalike, existing, defaults))
+    }
+
+    @Test
+    fun `a body hash with no source identity cannot fire L0`() {
+        // DEFECT 1. A hash the caller cannot attribute to a message is not evidence of anything,
+        // so the record is judged on its content by the layers below instead.
+        val existing = candidate(
+            id = 7,
+            occurredAt = at(9, 0),
+            sources = listOf(source(bodyHash = BODY_HASH, identity = null))
+        )
+        val incoming = input(
+            bodyHash = BODY_HASH,
+            occurredAt = at(9, 0).plusDays(30),
+            identity = null
+        )
+
+        assertNull(engine.explain(incoming, existing, defaults))
+    }
+
+    @Test
+    fun `an identical body on another channel is not a re-delivery`() {
+        // DEFECT 1. The bank's SMS and its email say the same thing; they are the twin pair L2
+        // exists for, not one message arriving twice.
+        val existing = candidate(
+            id = 8,
+            occurredAt = at(9, 0),
+            sources = listOf(
+                source(channel = SourceChannel.SMS, bodyHash = BODY_HASH, receivedAt = at(9, 0))
+            )
+        )
+        val email = input(
+            bodyHash = BODY_HASH,
+            occurredAt = at(9, 0).plusDays(30),
+            channel = SourceChannel.EMAIL,
+            identity = identity(receivedAt = at(9, 0))
+        )
+
+        assertNull(engine.explain(email, existing, defaults))
     }
 
     @Test
@@ -494,8 +684,19 @@ class DedupEngineTest {
 
     @Test
     fun `an empty body hash matches nothing`() {
-        val existing = candidate(id = 3, bodyHashes = setOf(""), occurredAt = at(3, 0))
-        val blank = input(bodyHash = "", occurredAt = at(20, 0), bank = "Axis Bank")
+        // Spec 11 §11.5 as this fork resolved it: a bodyless mail stores `body_hash = ""`, and
+        // every such mail would otherwise share it.
+        val existing = candidate(
+            id = 3,
+            occurredAt = at(3, 0),
+            sources = listOf(source(bodyHash = "", receivedAt = at(3, 0)))
+        )
+        val blank = input(
+            bodyHash = "",
+            occurredAt = at(20, 0),
+            bank = "Axis Bank",
+            identity = identity(receivedAt = at(3, 0))
+        )
 
         assertNull(engine.explain(blank, existing, defaults))
     }
@@ -552,6 +753,36 @@ class DedupEngineTest {
         val incoming = input(amount = "5.00", currency = "INR", occurredAt = at(13, 5))
 
         assertEquals(DedupDecision.NewTransaction, engine.evaluate(incoming, listOf(existing), defaults))
+    }
+
+    @Test
+    fun `a record whose currency is unknown never merges into one that names a currency`() {
+        // DEFECT 3. Treating blank as "matches anything" does not merely merge — it *assigns* the
+        // transaction's currency to a record that never named one, which is inventing the value
+        // that decides whether 5.00 is five rupees or five dollars (spec 01 C7).
+        val inRupees = candidate(id = 79, amount = "5.00", currency = "INR", occurredAt = at(13, 0))
+        val unknown = input(amount = "5.00", currency = "  ", occurredAt = at(13, 5))
+
+        assertEquals(DedupDecision.NewTransaction, engine.evaluate(unknown, listOf(inRupees), defaults))
+
+        // And the same in the other direction: a stored row with no currency is not an INR row.
+        val unknownRow = candidate(id = 80, amount = "5.00", currency = "", occurredAt = at(13, 0))
+        val inRupeesIncoming = input(amount = "5.00", currency = "INR", occurredAt = at(13, 5))
+
+        assertEquals(
+            DedupDecision.NewTransaction,
+            engine.evaluate(inRupeesIncoming, listOf(unknownRow), defaults)
+        )
+    }
+
+    @Test
+    fun `two records that both name no currency still merge`() {
+        // The deliberate other half of DEFECT 3: neither side claims a currency, so merging them
+        // assigns nothing to either. This is the legacy row the old wildcard was written for.
+        val existing = candidate(id = 89, amount = "5.00", currency = "", occurredAt = at(13, 0))
+        val incoming = input(amount = "5.00", currency = "", occurredAt = at(13, 5))
+
+        assertLink(MatchRule.AMOUNT_WINDOW, 89, engine.evaluate(incoming, listOf(existing), defaults))
     }
 
     @Test
@@ -776,6 +1007,37 @@ class DedupEngineTest {
     }
 
     @Test
+    fun `the bank alert reaches a gateway origin transaction that rounded the amount`() {
+        // DEFECT 4. Spec 10 §10.8 item 5 has the receipt land first and the bank's alert arrive
+        // second to take over account and balance — so the side that rounded is the *stored* one.
+        // A tolerance chosen from `incoming.isBankSender` alone is the exact tolerance of zero in
+        // exactly that case, and the payment is counted twice.
+        val gatewayOrigin = candidate(
+            id = 103,
+            amount = "1450.50",
+            merchant = "acme store",
+            occurredAt = at(12, 0),
+            isGatewayOrigin = true
+        )
+        val bankAlert = input(amount = "1450.00", occurredAt = at(12, 10))
+
+        val decision = engine.evaluate(bankAlert, listOf(gatewayOrigin), defaults)
+
+        assertLink(MatchRule.AMOUNT_WINDOW, 103, decision)
+        assertTrue((decision as DedupDecision.Link).promoteIncomingToPrimary)
+    }
+
+    @Test
+    fun `two bank alerts that disagree by fifty paise are two charges`() {
+        // The other half of DEFECT 4: the loose tolerance is for gateway rounding only. Two bank
+        // alerts for one debit agree to the paisa, so amounts that differ are different money.
+        val existing = candidate(id = 104, amount = "1450.50", occurredAt = at(12, 0))
+        val bankAlert = input(amount = "1450.00", occurredAt = at(12, 10))
+
+        assertEquals(DedupDecision.NewTransaction, engine.evaluate(bankAlert, listOf(existing), defaults))
+    }
+
+    @Test
     fun `a receipt arriving after the bank alert does not become primary`() {
         val bankOrigin = candidate(id = 102, merchant = "acme store", occurredAt = at(12, 0))
         val receipt = input(
@@ -868,6 +1130,32 @@ class DedupEngineTest {
     private fun at(hour: Int, minute: Int): LocalDateTime =
         LocalDateTime.of(2026, 9, 15, hour, minute)
 
+    /**
+     * One source row as the ingestor records it: channel, template, the body it carried and the
+     * identity of the message that carried it.
+     */
+    private fun source(
+        channel: SourceChannel = SourceChannel.EMAIL,
+        parserId: String? = "H1",
+        bodyHash: String? = BODY_HASH,
+        sender: String? = SENDER,
+        messageId: String? = null,
+        receivedAt: LocalDateTime? = at(9, 0),
+        identity: MessageIdentity? = MessageIdentity(sender, messageId, receivedAt)
+    ) = SourceFingerprint(
+        channel = channel,
+        parserId = parserId,
+        bodyHash = bodyHash,
+        identity = identity
+    )
+
+    /** The incoming message's own identity: who sent it, which copy it is, when it was stamped. */
+    private fun identity(
+        sender: String? = SENDER,
+        messageId: String? = null,
+        receivedAt: LocalDateTime? = at(9, 0)
+    ) = MessageIdentity(sender = sender, messageId = messageId, receivedAt = receivedAt)
+
     private fun input(
         amount: String = "1450.00",
         currency: String = "INR",
@@ -884,7 +1172,9 @@ class DedupEngineTest {
         isBankSender: Boolean = true,
         orderId: String? = null,
         isFromCard: Boolean = false,
-        fromAccount: String? = null
+        fromAccount: String? = null,
+        direction: MoneyDirection? = null,
+        identity: MessageIdentity? = null
     ) = DedupInput(
         amount = BigDecimal(amount),
         currency = currency,
@@ -901,7 +1191,9 @@ class DedupEngineTest {
         isBankSender = isBankSender,
         orderId = orderId,
         isFromCard = isFromCard,
-        fromAccount = fromAccount
+        fromAccount = fromAccount,
+        direction = direction,
+        identity = identity
     )
 
     private fun candidate(
@@ -915,10 +1207,17 @@ class DedupEngineTest {
         merchant: String? = "acme store",
         occurredAt: LocalDateTime = at(12, 0),
         transactionHash: String? = "txn-$id",
-        bodyHashes: Set<String> = setOf("existing-body-$id"),
-        sources: List<SourceFingerprint> = listOf(SourceFingerprint(SourceChannel.SMS, "HDFCBankParser")),
+        sources: List<SourceFingerprint> = listOf(
+            source(
+                channel = SourceChannel.SMS,
+                parserId = "HDFCBankParser",
+                bodyHash = "existing-body-$id",
+                sender = SMS_SENDER
+            )
+        ),
         sameTemplate: Int = 0,
-        isGatewayOrigin: Boolean = false
+        isGatewayOrigin: Boolean = false,
+        direction: MoneyDirection? = null
     ) = DedupCandidate(
         transactionId = id,
         amount = BigDecimal(amount),
@@ -930,10 +1229,10 @@ class DedupEngineTest {
         merchant = merchant,
         occurredAt = occurredAt,
         transactionHash = transactionHash,
-        bodyHashes = bodyHashes,
         sources = sources,
         sameTemplateSourceCount = sameTemplate,
-        isGatewayOrigin = isGatewayOrigin
+        isGatewayOrigin = isGatewayOrigin,
+        direction = direction
     )
 
     private companion object {
@@ -941,5 +1240,11 @@ class DedupEngineTest {
         const val REFERENCE = "123456789012"
         const val OTHER_REFERENCE = "210987654321"
         const val BODY_HASH = "0123456789abcdef0123456789abcdef"
+
+        /** Invented senders. The shape is a bank's; the address and the header id are not. */
+        const val SENDER = "alerts@example.com"
+        const val OTHER_SENDER = "noreply@example.org"
+        const val SMS_SENDER = "AD-BANKSM"
+        const val MESSAGE_ID = "<redelivered-mail@example.com>"
     }
 }

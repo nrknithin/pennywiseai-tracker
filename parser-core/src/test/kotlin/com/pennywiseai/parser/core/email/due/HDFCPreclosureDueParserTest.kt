@@ -43,7 +43,7 @@ class HDFCPreclosureDueParserTest {
                 body = """
                     Dear ACCOUNT HOLDER,
 
-                    With reference to your request, we have preclosed your loan A/C 9911002233 booked on your HDFC Bank Credit Card ending 4321.
+                    With reference to your request, we have preclosed your loan A/C 4411002233 booked on your HDFC Bank Credit Card ending 4321.
 
                     Preclosed amount : Rs. 2,53,471.86
 
@@ -60,7 +60,7 @@ class HDFCPreclosureDueParserTest {
                         currency = "INR",
                         // Received 17 Sep 2026 → "the next day".
                         dueDate = LocalDate.of(2026, 9, 18),
-                        reference = "9911002233",
+                        reference = "4411002233",
                         autoPay = false,
                         source = "HDFC"
                     )
@@ -70,14 +70,14 @@ class HDFCPreclosureDueParserTest {
                 name = "The stated figure wins over an outstanding quoted in the same mail",
                 from = sender,
                 subject = subject,
-                body = "we have preclosed your loan A/C no. 9911002233. Total outstanding as per " +
+                body = "we have preclosed your loan A/C no. 4411002233. Total outstanding as per " +
                     "our records was Rs. 2,55,000.00. Preclosure amount of Rs. 2,53,471.86 is " +
                     "payable. Kindly make the payment on the next day.",
                 expected = listOf(
                     ExpectedDue(
                         kind = DueKind.LOAN_PRECLOSURE,
                         amount = BigDecimal("253471.86"),
-                        reference = "9911002233",
+                        reference = "4411002233",
                         source = "HDFC"
                     )
                 )
@@ -86,13 +86,13 @@ class HDFCPreclosureDueParserTest {
                 name = "Broken Indian grouping is repaired, not re-spaced",
                 from = sender,
                 subject = subject,
-                body = "we have preclosed your loan A/C 9911002233. Preclosed amount : Rs. 2,53471.86 " +
+                body = "we have preclosed your loan A/C 4411002233. Preclosed amount : Rs. 2,53471.86 " +
                     "Kindly make the payment on the next day.",
                 expected = listOf(
                     ExpectedDue(
                         amount = BigDecimal("253471.86"),
                         dueDate = LocalDate.of(2026, 9, 18),
-                        reference = "9911002233"
+                        reference = "4411002233"
                     )
                 )
             ),
@@ -100,7 +100,7 @@ class HDFCPreclosureDueParserTest {
                 name = "A mail received late at night is due the next IST day",
                 from = sender,
                 subject = subject,
-                body = "we have preclosed your loan A/C 9911002233. Preclosed amount : Rs. 2,53,471.86 " +
+                body = "we have preclosed your loan A/C 4411002233. Preclosed amount : Rs. 2,53,471.86 " +
                     "Kindly make the payment on the next day.",
                 expected = listOf(
                     ExpectedDue(
@@ -114,12 +114,12 @@ class HDFCPreclosureDueParserTest {
                 name = "Amount phrased as preclosed for a sum",
                 from = sender,
                 subject = subject,
-                body = "we have preclosed your loan A/C 9911002233 for Rs. 41,234.00. Kindly make " +
+                body = "we have preclosed your loan A/C 4411002233 for Rs. 41,234.00. Kindly make " +
                     "the payment on the next day.",
                 expected = listOf(
                     ExpectedDue(
                         amount = BigDecimal("41234.00"),
-                        reference = "9911002233",
+                        reference = "4411002233",
                         kind = DueKind.LOAN_PRECLOSURE
                     )
                 )
@@ -128,12 +128,12 @@ class HDFCPreclosureDueParserTest {
                 name = "Amount phrased as payable towards preclosure",
                 from = sender,
                 subject = subject,
-                body = "Kindly pay Rs. 41,234.00 towards preclosure of your loan A/C 9911002233 " +
+                body = "Kindly pay Rs. 41,234.00 towards preclosure of your loan A/C 4411002233 " +
                     "on the next day.",
                 expected = listOf(
                     ExpectedDue(
                         amount = BigDecimal("41234.00"),
-                        reference = "9911002233"
+                        reference = "4411002233"
                     )
                 )
             ),
@@ -141,12 +141,12 @@ class HDFCPreclosureDueParserTest {
                 name = "HTML-derived body with pipe-joined cells",
                 from = sender,
                 subject = subject,
-                body = "Loan A/C | 9911002233 | Preclosed amount | Rs. 2,53,471.86 | " +
+                body = "Loan A/C | 4411002233 | Preclosed amount | Rs. 2,53,471.86 | " +
                     "Kindly make the payment on the next day.",
                 expected = listOf(
                     ExpectedDue(
                         amount = BigDecimal("253471.86"),
-                        reference = "9911002233",
+                        reference = "4411002233",
                         source = "HDFC"
                     )
                 )
@@ -176,14 +176,14 @@ class HDFCPreclosureDueParserTest {
                 name = "Preclosure confirmed but no figure stated",
                 from = sender,
                 subject = subject,
-                body = "we have preclosed your loan A/C 9911002233. Our representative will share " +
+                body = "we have preclosed your loan A/C 4411002233. Our representative will share " +
                     "the preclosure figure with you shortly."
             ),
             DueCase(
                 name = "Two different preclosure figures are ambiguous, so neither is used",
                 from = sender,
                 subject = subject,
-                body = "we have preclosed your loan A/C 9911002233. Preclosed amount : Rs. 41,234.00 " +
+                body = "we have preclosed your loan A/C 4411002233. Preclosed amount : Rs. 41,234.00 " +
                     "Preclosure amount : Rs. 47,890.00 Kindly make the payment on the next day."
             ),
             DueCase(
@@ -193,7 +193,7 @@ class HDFCPreclosureDueParserTest {
                 // Deliberate: the body around a preclosure line is full of digits (the loan
                 // account, dates), so the amount is only trusted when the bank marked it as
                 // money. Missing the due is recoverable; showing the wrong figure is not.
-                body = "we have preclosed your loan A/C 9911002233. Preclosed amount : 2,53,471.86 " +
+                body = "we have preclosed your loan A/C 4411002233. Preclosed amount : 2,53,471.86 " +
                     "Kindly make the payment on the next day."
             ),
             DueCase(
@@ -208,7 +208,7 @@ class HDFCPreclosureDueParserTest {
                 name = "The same wording from a lender the parser does not serve",
                 from = "statement@getonecard.app",
                 subject = "Your OneCard EMI has been foreclosed",
-                body = "we have preclosed your loan A/C 9911002233. Preclosed amount : Rs. 41,234.00 " +
+                body = "we have preclosed your loan A/C 4411002233. Preclosed amount : Rs. 41,234.00 " +
                     "Kindly make the payment on the next day."
             )
         )

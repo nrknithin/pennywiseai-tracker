@@ -26,6 +26,26 @@ data class MailboxMessageHeader(
 /** A header plus its already-extracted body — see [MailboxMessageHeader] for why the body is not lazy. */
 data class FetchedMessage(val header: MailboxMessageHeader, val body: ExtractedBody)
 
+/**
+ * One message the session could not turn into a [FetchedMessage].
+ *
+ * Spec 02 §2.7 says a parser that throws on one message costs that message and nothing more.
+ * The same has to hold a layer earlier: a `From` header no address parser accepts, or a
+ * message expunged between the search and the fetch, must not end the batch — because the
+ * watermark only advances when a batch completes, and a message that kills every batch kills
+ * every future sync too (R-11-07).
+ *
+ * So the message is skipped and its failure recorded here, for the worker to log as
+ * `email_messages.skip_reason = "ERROR:<class>"` (R-11-05) and count in `sync_runs.errors`.
+ *
+ * @param uid the UID, or **null** when the UID itself was the unreadable part. Null means
+ *   unknown, never zero: spec 01 constraint C7, and a zero here would be compared against a
+ *   watermark as if it were real.
+ * @param error the failure's class name — never its message, which on some providers quotes
+ *   the login (spec 04 §4.1).
+ */
+data class UnreadableMessage(val uid: Long?, val error: String)
+
 /** Result of screen 47's "Test connection" (E25/E26). Never carries the credential. */
 sealed interface ConnectionTest {
     /** [folders] feeds the folder picker so a wrong `[Gmail]/All Mail` can be corrected in place. */
@@ -99,8 +119,23 @@ interface MailboxSession {
      *
      * A UID that vanished server-side (the user deleted the mail between search and fetch) is
      * simply absent from the result — the caller must key off `header.uid`, not the index.
+     * So is one whose headers could not be read; that one is recorded in [unreadable].
+     *
+     * @throws MailboxException only when the *connection* failed, never because one message
+     * did. The distinction is what the caller's watermark rests on: a batch that returns has
+     * dealt with every UID it was given, so the watermark may advance past all of them.
      */
     suspend fun fetch(uids: List<Long>, maxBodyKb: Int): List<FetchedMessage>
+
+    /**
+     * Messages this session skipped rather than returned, oldest first, accumulated across
+     * every [searchUids] and [fetch] call it has served.
+     *
+     * Empty for a clean run. A non-empty list is not an error the worker retries — the
+     * messages are gone for this run either way — but each entry is a row the Email Log
+     * should be able to show and a `sync_runs.errors` the user can see.
+     */
+    val unreadable: List<UnreadableMessage>
 }
 
 /**

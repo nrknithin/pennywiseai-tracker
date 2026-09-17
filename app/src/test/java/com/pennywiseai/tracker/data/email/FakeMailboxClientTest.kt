@@ -123,6 +123,37 @@ class FakeMailboxClientTest {
     }
 
     @Test
+    fun `a message whose headers will not parse costs that message and nothing more`() {
+        val client = FakeMailboxClient(
+            messages = (1L..3L).map { mailboxMessage(uid = it) },
+            unreadableUids = setOf(2L)
+        )
+
+        val fetched = session(client) { it.fetch(listOf(1L, 2L, 3L), maxBodyKb = 64) to it.unreadable }
+
+        // The batch completed. That is the whole point: it is what lets the worker advance
+        // the watermark past UID 2, so the next run does not fetch it and fail again — and
+        // again, and again, which is what an exception here would mean (spec 02 §2.7 applied
+        // one layer below the parser).
+        assertEquals(listOf(1L, 3L), fetched.first.map { it.header.uid })
+        // Skipped, but not silently: the worker logs it `ERROR:<class>` (R-11-05) and counts
+        // it in `sync_runs.errors`.
+        assertEquals(listOf(UnreadableMessage(2L, "MessagingException")), fetched.second)
+    }
+
+    @Test
+    fun `a clean batch records nothing as unreadable`() {
+        val client = FakeMailboxClient(messages = (1L..3L).map { mailboxMessage(uid = it) })
+
+        val unreadable = session(client) {
+            it.fetch(listOf(1L, 2L, 3L), maxBodyKb = 64)
+            it.unreadable
+        }
+
+        assertEquals(emptyList<UnreadableMessage>(), unreadable)
+    }
+
+    @Test
     fun `failAfter stops the fake part-way through a batch`() {
         val client = FakeMailboxClient(
             messages = (1L..5L).map { mailboxMessage(uid = it) },

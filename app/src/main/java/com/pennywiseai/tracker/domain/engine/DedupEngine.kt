@@ -12,6 +12,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * "Present" for the string fields of this file: absent, empty and whitespace are one state.
+ *
+ * File-private so that [MessageIdentity] and [DedupEngine] cannot drift apart on what counts as a
+ * value — the engine compares fields that both of them read.
+ */
+private fun String?.orNullIfBlank(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
+
+/**
  * An own account from `settings.accounts.own` (spec 14 §14.5).
  *
  * Drives L5 and, upstream of this engine, the INCOME-vs-TRANSFER decision: money arriving from
@@ -45,10 +53,94 @@ data class DedupConfig(
     val ownAccounts: List<OwnAccount> = emptyList()
 )
 
-/** One source already absorbed by a candidate: which channel, and which template within it. */
+/**
+ * Which way the money moved, for the records whose [TransactionType] cannot say.
+ *
+ * Spec 14 §14.5 types *both* legs of an own-account transfer TRANSFER — the credit side is
+ * TRANSFER rather than INCOME precisely so that moving savings between two of the owner's banks
+ * never counts as income. That makes the type useless for telling the two legs apart, so the leg
+ * is carried alongside it.
+ */
+enum class MoneyDirection {
+    /** Money arrived in this record's account: an INCOME, or the credit leg of a transfer. */
+    IN,
+
+    /** Money left it: every other type, and the debit leg of a transfer. */
+    OUT
+}
+
+/**
+ * Which message this is, independently of the words inside it (spec 14 §14.3 L0).
+ *
+ * L0 exists for exactly one case: the **same** message arriving twice — Gmail hands a mail back
+ * after a UIDVALIDITY reset, an SMS restore replays the inbox. Body text alone cannot establish
+ * that. `BodyNormaliser` keeps digits so that most bodies differ between two charges, but a
+ * template with no date, no reference and a fixed amount ("Rs 49.00 debited for your
+ * subscription") produces byte-identical bodies for two genuinely separate debits, and merging
+ * those would delete real money from the user's history.
+ *
+ * What separates a re-delivery from a second charge is identity: a re-delivery keeps the sender,
+ * the Message-ID and the timestamp the message was first stamped with; a second charge does not.
+ * Every field is nullable because a channel may not have one, and an identity that cannot be
+ * established is treated as "not the same message" rather than as a match.
+ */
+data class MessageIdentity(
+    /** Normalised sender: the lower-case from-address for email, the sender id for SMS. */
+    val sender: String? = null,
+    /**
+     * RFC 5322 Message-ID (`email_messages.message_id`). It survives a UIDVALIDITY reset, which is
+     * why spec 03 §3.2 calls it the second dedup key; null on channels that have none.
+     */
+    val messageId: String? = null,
+    /**
+     * The message's own timestamp — IMAP `INTERNALDATE`, the SMS `date` column — and never a date
+     * read out of the body. A re-delivered mail keeps its INTERNALDATE and a restored SMS keeps
+     * its `date`, so this is stable across exactly the deliveries L0 is meant to catch.
+     */
+    val receivedAt: LocalDateTime? = null
+) {
+
+    /**
+     * True when [other] identifies the same message as this one.
+     *
+     * Two keys, tried in strength order. A Message-ID known on both sides settles it outright, in
+     * either direction: equal ids are one message, different ids are two. Failing that, a message
+     * is identified by who sent it and when it was stamped — a pair that a second charge from the
+     * same template cannot reproduce, because it arrives at a different time. Anything less
+     * (no sender, no timestamp, no identity at all) is not enough to claim two records are one
+     * message, so it is false.
+     */
+    fun isSameMessageAs(other: MessageIdentity?): Boolean {
+        if (other == null) return false
+
+        val id = messageId.orNullIfBlank()
+        val otherId = other.messageId.orNullIfBlank()
+        if (id != null && otherId != null) return id.equals(otherId, ignoreCase = true)
+
+        val from = sender.orNullIfBlank() ?: return false
+        val otherFrom = other.sender.orNullIfBlank() ?: return false
+        if (!from.equals(otherFrom, ignoreCase = true)) return false
+
+        val stampedAt = receivedAt ?: return false
+        return stampedAt == other.receivedAt
+    }
+}
+
+/**
+ * One source already absorbed by a candidate: which channel and template it came through, the
+ * body it carried, and which message it was.
+ *
+ * The body hash lives here rather than in a bare set on [DedupCandidate] on purpose: L0 may only
+ * merge a body hash it can attribute to a *specific* earlier message, so the type makes a naked
+ * hash — a hash with no source identity attached — impossible to hand the engine.
+ */
 data class SourceFingerprint(
     val channel: SourceChannel,
-    val parserId: String?
+    val parserId: String?,
+    /** `transaction_sources.body_hash`. Null or blank when the message had no usable body. */
+    val bodyHash: String? = null,
+    /** `transaction_sources.sender` + `received_at`, and the Message-ID when the caller joins it. */
+    val identity: MessageIdentity? = null
 )
 
 /**
@@ -83,7 +175,23 @@ data class DedupInput(
     /** Gateway/merchant order or payment id (`pay_…`, an order number) for L4. */
     val orderId: String? = null,
     val isFromCard: Boolean = false,
-    val fromAccount: String? = null
+    val fromAccount: String? = null,
+    /**
+     * Which leg of the movement this is, when [type] cannot say (spec 14 §14.5).
+     *
+     * Required on the credit leg of an own-account transfer: the ingestor re-types such a credit
+     * from INCOME to TRANSFER, and setting this to [MoneyDirection.IN] at the same moment is what
+     * keeps L5 able to see a debit and a credit rather than two debits. Null means "read the leg
+     * off [type]", which is right for every record whose type is not TRANSFER.
+     */
+    val direction: MoneyDirection? = null,
+    /**
+     * Who sent this message and which copy of it it is, for L0 (spec 14 §14.3).
+     *
+     * Null disables L0's body-hash branch for this record — an unidentifiable message cannot be
+     * shown to be a re-delivery, so it falls through to the layers that judge it on its content.
+     */
+    val identity: MessageIdentity? = null
 )
 
 /**
@@ -103,8 +211,11 @@ data class DedupCandidate(
     val merchant: String?,
     val occurredAt: LocalDateTime,
     val transactionHash: String?,
-    /** Body hashes of every source already on this transaction (L0). */
-    val bodyHashes: Set<String>,
+    /**
+     * Every source already on this transaction: its channel, its template, the body it carried
+     * and which message it was. L0 reads the body hashes from here, which is what ties each one
+     * to the message that delivered it.
+     */
     val sources: List<SourceFingerprint>,
     /**
      * `TransactionSourceDao.countSameTemplate(transactionId, incoming.channel, incoming.parserId)`.
@@ -120,7 +231,16 @@ data class DedupCandidate(
      */
     val sameTemplateSourceCount: Int,
     /** True when this transaction was created from a non-bank sender; the bank's later alert takes over as primary. */
-    val isGatewayOrigin: Boolean = false
+    val isGatewayOrigin: Boolean = false,
+    /**
+     * Which leg this stored transaction is, when its type cannot say (spec 14 §14.5).
+     *
+     * Null is read as [MoneyDirection.OUT] for a TRANSFER, because that is how this app stores
+     * one: the row sits on the account the money left, with `from_account`/`to_account` naming
+     * the two sides. A transfer whose stored row is the credit side must say so here, or L5 sees
+     * two debits and refuses to pair them.
+     */
+    val direction: MoneyDirection? = null
 )
 
 /** What the engine decided, and under which rule (recorded on `transaction_sources.match_rule`). */
@@ -179,13 +299,16 @@ data class Enrichment(
  * sources already attached to them, and returns a decision; every query that produced those
  * candidates belongs to `EmailTransactionIngestor`.
  *
- * Two guards decide whether this engine is correct, and both are stated once, as named
- * functions, so a reviewer can check them without reading the layers:
+ * Three guards decide whether this engine is correct, and each is stated once, as a named
+ * function, so a reviewer can check them without reading the layers:
  *
  *  - [conflictingReference] — two genuine charges of the same amount on the same day with
  *    different references must never merge.
  *  - [blocksSameChannelMerge] — a transaction that already absorbed a message from the same
  *    channel *and* the same template cannot absorb another one; that is a second charge.
+ *  - [isRedelivery] — L0 runs with no window and no other guard, so it may only fire for a
+ *    message that is provably the *same message* the transaction already holds, never for a
+ *    second message that merely reads the same.
  */
 @Singleton
 class DedupEngine @Inject constructor(
@@ -326,12 +449,16 @@ class DedupEngine @Inject constructor(
     // ---------------------------------------------------------------------------------------
 
     /**
-     * **L0 HASH** — identical normalised body, or identical `transaction_hash`. Window ∞.
+     * **L0 HASH** — the same message, delivered twice. Window ∞.
      *
-     * Deliberately skips both guards. An exact re-delivery *is* a second message from the same
-     * template — Gmail hands the same mail back after a UIDVALIDITY reset, an SMS restore replays
-     * the inbox — so applying the intra-channel guard here would turn every re-delivery into a
-     * duplicate transaction, which is the opposite of what the guard is for.
+     * Deliberately skips the intra-channel and reference guards: an exact re-delivery *is* a
+     * second message from the same template, so applying the intra-channel guard here would turn
+     * every re-delivery into a duplicate transaction, which is the opposite of what the guard is
+     * for. That is also why it may not merge on body text alone — see [isRedelivery].
+     *
+     * The `transaction_hash` branch needs no such constraint. That column is `transactions`'
+     * unique index (and upstream's own duplicate key), so a hash equal to a stored one can only
+     * ever belong to that row; there is no second transaction for it to wrongly absorb.
      */
     private fun matchesHash(
         incoming: DedupInput,
@@ -341,8 +468,32 @@ class DedupEngine @Inject constructor(
         if (!sameCurrency(incoming, candidate)) return false
         val byTransactionHash = !incoming.transactionHash.isNullOrBlank() &&
             incoming.transactionHash == candidate.transactionHash
-        val byBody = incoming.bodyHash.isNotBlank() && candidate.bodyHashes.contains(incoming.bodyHash)
-        return byTransactionHash || byBody
+        return byTransactionHash || isRedelivery(incoming, candidate)
+    }
+
+    /**
+     * L0's body branch: this exact message is already on this transaction.
+     *
+     * Equal body text is **not** on its own evidence of a duplicate. A template that prints no
+     * date, no reference and an unchanging amount — a fixed subscription debit, a wallet top-up —
+     * hashes identically for two genuinely separate charges, and with L0's infinite window and no
+     * other guard those two charges would collapse into one and half the money would vanish.
+     * Spec 14 §14.3 scopes L0 to "exact re-delivery (Gmail duplicate, SMS restore)", so the match
+     * requires the source identity to agree as well: the same channel, and a
+     * [MessageIdentity.isSameMessageAs] on the source that carried that body.
+     *
+     * The template id is deliberately *not* compared. A mail re-delivered months later may be
+     * claimed by a parser the app did not have the first time, and refusing the merge then would
+     * produce the duplicate this layer exists to prevent.
+     */
+    private fun isRedelivery(incoming: DedupInput, candidate: DedupCandidate): Boolean {
+        val bodyHash = incoming.bodyHash.orNullIfBlank() ?: return false
+        val identity = incoming.identity ?: return false
+        return candidate.sources.any { source ->
+            source.channel == incoming.channel &&
+                source.bodyHash.orNullIfBlank() == bodyHash &&
+                identity.isSameMessageAs(source.identity)
+        }
     }
 
     /**
@@ -361,7 +512,7 @@ class DedupEngine @Inject constructor(
         val candidateRef = digitsOnly(candidate.reference) ?: return false
         if (ref.length < MIN_REFERENCE_DIGITS || ref != candidateRef) return false
         if (!sameCurrency(incoming, candidate)) return false
-        if (direction(incoming.type) != direction(candidate.type)) return false
+        if (directionOf(incoming) != directionOf(candidate)) return false
         if (!amountsMatch(incoming, candidate, config)) return false
         return within(incoming, candidate, Duration.ofHours(config.upiRefWindowHours.toLong()))
     }
@@ -380,7 +531,7 @@ class DedupEngine @Inject constructor(
         if (blocksMerge(incoming, candidate)) return false
         if (conflictingReference(incoming, candidate)) return false
         if (!sameCurrency(incoming, candidate)) return false
-        if (direction(incoming.type) != direction(candidate.type)) return false
+        if (directionOf(incoming) != directionOf(candidate)) return false
         if (!sameBank(incoming, candidate)) return false
 
         val last4 = trimmed(incoming.accountLast4) ?: return false
@@ -407,7 +558,7 @@ class DedupEngine @Inject constructor(
         if (blocksMerge(incoming, candidate)) return false
         if (conflictingReference(incoming, candidate)) return false
         if (!sameCurrency(incoming, candidate)) return false
-        if (direction(incoming.type) != direction(candidate.type)) return false
+        if (directionOf(incoming) != directionOf(candidate)) return false
         if (!sameBank(incoming, candidate)) return false
 
         // §14.2: a null last-4 matches anything here, but two different ones are two instruments.
@@ -441,7 +592,7 @@ class DedupEngine @Inject constructor(
         if (blocksMerge(incoming, candidate)) return false
         if (conflictingReference(incoming, candidate)) return false
         if (!sameCurrency(incoming, candidate)) return false
-        if (direction(incoming.type) != direction(candidate.type)) return false
+        if (directionOf(incoming) != directionOf(candidate)) return false
         if (!amountsMatch(incoming, candidate, config)) return false
         if (!within(incoming, candidate, Duration.ofHours(config.gatewayWindowHours.toLong()))) return false
 
@@ -459,6 +610,11 @@ class DedupEngine @Inject constructor(
      * amount, opposite directions, joined either by a shared reference or, when both sides are
      * own accounts, by landing inside `transferWindowMinutes`.
      *
+     * "Opposite directions" is read from [DedupInput.direction] / [DedupCandidate.direction] and
+     * only then from the type, because §14.5 has already re-typed the credit leg of an own-account
+     * transfer from INCOME to TRANSFER by the time this layer sees it. Both legs then carry the
+     * same type, and a leg that does not say which one it is looks exactly like the other.
+     *
      * The two sides must be different instruments. A credit and a debit of the same amount on the
      * *same* account with the same reference is a reversal or a refund — a second, real movement
      * of money — and absorbing it into the original charge would silently delete it.
@@ -472,7 +628,7 @@ class DedupEngine @Inject constructor(
         config: DedupConfig
     ): Boolean {
         if (!sameCurrency(incoming, candidate)) return false
-        if (direction(incoming.type) == direction(candidate.type)) return false
+        if (directionOf(incoming) == directionOf(candidate)) return false
         if (!amountsMatch(incoming, candidate, config)) return false
         if (sameInstrument(incoming, candidate)) return false
 
@@ -507,9 +663,6 @@ class DedupEngine @Inject constructor(
         return candidate.sources.any { it.channel == incoming.channel && it.parserId == parserId }
     }
 
-    /** Debits and credits, so "same direction" survives an SMS typing a charge EXPENSE and an email typing it CREDIT. */
-    private enum class Direction { IN, OUT }
-
     /**
      * Spec 14 says "same type"; this compares direction instead.
      *
@@ -517,29 +670,56 @@ class DedupEngine @Inject constructor(
      * third (a card bill paid from savings), so requiring identical [TransactionType] would split
      * every twin pair in §14.1. Direction is the part that cannot differ for one event: money
      * either left the account or arrived in it.
+     *
+     * The type alone cannot carry it, though. §14.5 types the credit leg of an own-account
+     * transfer TRANSFER rather than INCOME, so reading the leg off the type would call both legs
+     * of one transfer "out" — L1 would then merge them on their shared reference and one leg of
+     * the movement would be gone, while L5, which wants opposite legs, would never fire. When a
+     * record knows which leg it is, it says so, and that wins over the type.
      */
-    private fun direction(type: TransactionType): Direction =
-        if (type == TransactionType.INCOME) Direction.IN else Direction.OUT
+    private fun directionOf(incoming: DedupInput): MoneyDirection =
+        incoming.direction ?: directionOf(incoming.type)
+
+    private fun directionOf(candidate: DedupCandidate): MoneyDirection =
+        candidate.direction ?: directionOf(candidate.type)
+
+    private fun directionOf(type: TransactionType): MoneyDirection =
+        if (type == TransactionType.INCOME) MoneyDirection.IN else MoneyDirection.OUT
 
     /**
      * Currency is never crossed (upstream `CLAUDE.md` constraints 1 and 2): a USD receipt and an
-     * INR charge are not the same record even when a conversion would line them up. A blank
-     * currency is "unknown" rather than "different", so a legacy row with no currency still merges.
+     * INR charge are not the same record even when a conversion would line them up.
+     *
+     * An unknown currency does not compare equal to a known one. Treating blank as a wildcard
+     * would merge a record whose parser left the field empty into an INR transaction and thereby
+     * *assign* it a currency nobody read off a message — inventing the one value that decides
+     * which total a rupee belongs to (spec 01 constraint C7). Two blanks still match: neither
+     * record claims a currency, so nothing is being assigned to either.
      */
     private fun sameCurrency(incoming: DedupInput, candidate: DedupCandidate): Boolean {
-        val a = incoming.currency.trim()
-        val b = candidate.currency.trim()
-        if (a.isEmpty() || b.isEmpty()) return true
+        val a = incoming.currency.orNullIfBlank()
+        val b = candidate.currency.orNullIfBlank()
+        if (a == null || b == null) return a == null && b == null
         return a.equals(b, ignoreCase = true)
     }
 
-    /** Gateway-vs-bank gets the looser tolerance of §14.2; bank-vs-bank must agree to the paisa. */
+    /**
+     * §14.2's amount tolerance: gateway-vs-bank gets the looser one, bank-vs-bank must agree to
+     * the paisa.
+     *
+     * "Gateway-vs-bank" is a property of the *pair*, not of the incoming record. Spec 10 §10.8
+     * item 5 has the bank's alert arrive second and take the primary slot from a receipt that was
+     * recorded first, and it is that receipt which did the rounding — so a rule that read only
+     * `incoming.isBankSender` would apply the zero tolerance to exactly the case the loose one
+     * exists for, leave the rounded gateway transaction unmatched, and double-count the payment.
+     */
     private fun amountsMatch(
         incoming: DedupInput,
         candidate: DedupCandidate,
         config: DedupConfig
     ): Boolean {
-        val tolerance = if (incoming.isBankSender) config.amountToleranceAbs else config.gatewayToleranceAbs
+        val gatewayInvolved = !incoming.isBankSender || candidate.isGatewayOrigin
+        val tolerance = if (gatewayInvolved) config.gatewayToleranceAbs else config.amountToleranceAbs
         return (incoming.amount - candidate.amount).abs() <= tolerance.abs()
     }
 
@@ -636,7 +816,7 @@ class DedupEngine @Inject constructor(
     /** A VPA still looks like one after storage; a real merchant name does not carry an `@`. */
     private fun looksLikeVpa(value: String?): Boolean = value != null && value.contains('@')
 
-    private fun trimmed(value: String?): String? = value?.trim()?.takeIf { it.isNotEmpty() }
+    private fun trimmed(value: String?): String? = value.orNullIfBlank()
 
     /** Order ids are compared case-insensitively and without separators (`pay_ab-12` == `PAY_AB12`). */
     private fun token(value: String?): String? = alphanumeric(value)

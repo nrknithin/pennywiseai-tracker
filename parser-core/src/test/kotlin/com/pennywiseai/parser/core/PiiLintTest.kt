@@ -1,8 +1,10 @@
 package com.pennywiseai.parser.core
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.DynamicTest.dynamicTest
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
 import java.io.File
 
@@ -41,13 +43,46 @@ class PiiLintTest {
         val exemptFiles: Set<String> = emptySet()
     )
 
+    /**
+     * A UPI handle on one of the families Indian banks issue.
+     *
+     * The local part decides: a fixture uses an obviously synthetic one, a leak carries somebody's
+     * real handle. That test is done in [isPlaceholderHandle] rather than as a negative lookahead
+     * in the pattern, because a lookahead anchored at the match start does not stop the regex
+     * from simply starting later — `someone-2@okaxis` would be re-matched from `one-2@okaxis`
+     * and reported anyway.
+     */
+    private val upiRule = Rule(
+        name = "real-looking UPI handle",
+        pattern = Regex("""\b[a-z0-9][a-z0-9._-]{2,}@(ok[a-z]+|ybl|paytm|axl|ibl|upi|apl)\b""", RegexOption.IGNORE_CASE),
+        why = "A UPI handle with a real-looking prefix. Use someone@upi, or a synthetic local " +
+            "part such as owner-1@okaxis (spec 06 §6.2).",
+        // This file spells the handle families out as a pattern; scanning itself would only
+        // ever produce a false positive.
+        exemptFiles = setOf("PiiLintTest.kt")
+    )
+
+    /**
+     * Local parts that are self-evidently invented. A fixture needs several *distinct* handles
+     * to test "is this the account holder's own VPA or a stranger's", which a single
+     * `someone@upi` cannot express — so a synthetic word plus a suffix is allowed.
+     */
+    private val placeholderLocalParts = listOf(
+        "someone", "user", "test", "example", "payee", "payer", "merchant",
+        "owner", "stranger", "acme", "demo", "sample", "store", "customer"
+    )
+
     private val rules = listOf(
         Rule(
             name = "Indian mobile number",
             // Ten digits starting 6-9, standing alone. Word boundaries keep this from firing
             // inside a 12-digit UPI reference, which is the shape fixtures are told to use.
             pattern = Regex("""(?<![\d])[6-9]\d{9}(?![\d])"""),
-            why = "A 10-digit mobile number. Fixtures must not carry one."
+            why = "A 10-digit mobile number. Fixtures must not carry one — and note that an " +
+                "invented 10-digit account or loan number starting 6-9 is indistinguishable " +
+                "from one by shape, so choose fixture digits that start lower.",
+            // This file quotes example numbers while explaining the rule.
+            exemptFiles = setOf("PiiLintTest.kt")
         ),
         Rule(
             name = "full card number",
@@ -59,16 +94,7 @@ class PiiLintTest {
             pattern = Regex("""(?<![\d])\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{4}(?![\d])"""),
             why = "A card number written in groups of four."
         ),
-        Rule(
-            name = "real-looking UPI handle",
-            // The handle families Indian banks issue. A fixture VPA must use a placeholder
-            // local part; anything else is somebody's actual handle.
-            pattern = Regex("""\b(?!someone\b|user\b|test\b|example\b|payee\b)[a-z0-9][a-z0-9._-]{2,}@(ok[a-z]+|ybl|paytm|axl|ibl|upi|apl)\b""", RegexOption.IGNORE_CASE),
-            why = "A UPI handle with a real-looking prefix. Use someone@upi (spec 06 §6.2).",
-            // This file spells the handle families out as a pattern; scanning itself would
-            // only ever produce a false positive.
-            exemptFiles = setOf("PiiLintTest.kt")
-        ),
+        upiRule,
         Rule(
             name = "service-account private key",
             pattern = Regex("""(-----BEGIN [A-Z ]*PRIVATE KEY-----|"private_key"\s*:|"client_email"\s*:)"""),
@@ -96,12 +122,28 @@ class PiiLintTest {
         pattern = Regex("""\b[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}\b"""),
         why = "A personal email address. Use an example.com address, or — if this is a bank or " +
             "merchant sender — add it to EmailSenderRegistry, which is where senders belong anyway.",
-        exemptFiles = setOf("PiiLintTest.kt")
+        // IgnoreRules holds *fragments* of institutional sender addresses — `axis_system@`,
+        // `services@custcomm.icici` — matched as substrings against a From header. They are not
+        // whole addresses, so the registry cannot resolve them, and they are not people.
+        exemptFiles = setOf("PiiLintTest.kt", "IgnoreRules.kt")
     )
 
     /** Address shapes that are never a person. */
     private val allowedEmailDomains = listOf("example.com", "example.org", "example.in", "example.net", "upi", "okbank")
     private val allowedEmailLocalParts = listOf("someone", "user", "test", "noreply", "no-reply", "payee")
+
+    /**
+     * A *call* to the credential's IMAP accessor.
+     *
+     * The negative lookbehind is what makes it a call rather than an occurrence: the one
+     * spelling preceded by `fun` is the declaration in `EmailCredentialStore.kt`, which must
+     * not count against its own rule.
+     */
+    private val credentialExitCall = Regex("""(?<!fun\s)\brevealForImapLogin\s*\(""")
+
+    /** The one file allowed to make that call. */
+    private val credentialExitFile =
+        "app/src/main/java/com/pennywiseai/tracker/data/email/JavaMailImapClient.kt"
 
     @TestFactory
     fun `source tree carries no personal data or key material`(): List<DynamicTest> {
@@ -126,6 +168,7 @@ class PiiLintTest {
                     val text = file.readText()
                     for (match in rule.pattern.findAll(text)) {
                         if (rule === emailRule && isAllowedAddress(match.value)) continue
+                        if (rule === upiRule && isPlaceholderHandle(match.value)) continue
                         hits += relativePath(file) + ":" + lineOf(text, match.range.first) + "  " + match.value
                     }
                 }
@@ -139,6 +182,111 @@ class PiiLintTest {
         return listOf(sanity) + ruleTests
     }
 
+    /**
+     * The app password has exactly one way out to the network, and this counts the ways.
+     *
+     * `AppPassword.revealForImapLogin()` is the single accessor that hands the credential to
+     * `javax.mail`. Its KDoc, and `JavaMailImapClient`'s, both say so — this is what makes
+     * that true rather than aspirational. A second caller is how an app password ends up in a
+     * log line, a crash report or a `toString()`, which is spec 04 §4.1's first threat.
+     *
+     * **Call sites, not occurrences** (the note `docs/FORK-CHANGES.md` leaves for whoever
+     * writes this rule). The *declaration* lives in `EmailCredentialStore.kt` and the name is
+     * spelled all over both files' KDoc; counting mentions would fail on the declaring file
+     * itself and on every comment that explains the rule. So comments are blanked first, and
+     * the declaration — the one occurrence preceded by `fun` — does not count as a call.
+     *
+     * `revealForStorage()` is deliberately *not* checked here: it is a second accessor for a
+     * second purpose (writing to `EncryptedSharedPreferences`), recorded as a deviation in
+     * `docs/FORK-CHANGES.md`. Giving each exit its own name is exactly what keeps this rule
+     * statable; one shared accessor could not be counted at all.
+     */
+    @Test
+    fun `the app password has exactly one call site into the network`() {
+        val callSites = sourceFiles()
+            // This file spells the identifier out in the rule itself; scanning it could only
+            // ever find that. Same reason the pattern rules exempt it.
+            .filter { it.name != "PiiLintTest.kt" }
+            .flatMap { file ->
+                val code = withoutComments(file.readText())
+                credentialExitCall.findAll(code)
+                    .map { relativePath(file) + ":" + lineOf(code, it.range.first) }
+                    .toList()
+            }
+
+        assertEquals(
+            1,
+            callSites.size,
+            "AppPassword.revealForImapLogin() must have exactly one call site — the store.connect(…) " +
+                "in JavaMailImapClient. Anywhere else, the credential is a String somebody can log " +
+                "(spec 04 §4.1). Found " + callSites.size + ":\n" + callSites.joinToString("\n") { "  " + it }
+        )
+        assertTrue(
+            callSites.single().startsWith(credentialExitFile),
+            "The one call site of revealForImapLogin() has moved out of " + credentialExitFile +
+                " to " + callSites.single() + ". If the IMAP client really has moved, update this " +
+                "rule and the KDoc on AppPassword and JavaMailImapClient with it."
+        )
+    }
+
+    /**
+     * The same text with every comment blanked and the line structure untouched, so a match's
+     * line number still points at the source.
+     *
+     * Deliberately not a Kotlin lexer: string literals are left alone, so a `//` inside a URL
+     * in a string swallows the rest of that line. That can only ever *hide* a call site from
+     * the rule, never invent one — a lint that fails the build on innocent code would be the
+     * worse failure, and the rule is here to catch a careless second caller, not a hostile
+     * one who could defeat any textual check.
+     */
+    private fun withoutComments(text: String): String {
+        val out = StringBuilder(text.length)
+        var i = 0
+        while (i < text.length) {
+            val lineComment = text.startsWith("//", i)
+            val blockComment = text.startsWith("/*", i)
+            when {
+                lineComment -> {
+                    while (i < text.length && text[i] != '\n') {
+                        out.append(' ')
+                        i++
+                    }
+                }
+                blockComment -> {
+                    // Kotlin nests block comments, so this counts rather than stopping at the
+                    // first `*/`.
+                    var depth = 0
+                    while (i < text.length) {
+                        if (text.startsWith("/*", i)) {
+                            depth++
+                            out.append("  ")
+                            i += 2
+                        } else if (text.startsWith("*/", i)) {
+                            depth--
+                            out.append("  ")
+                            i += 2
+                            if (depth == 0) break
+                        } else {
+                            out.append(if (text[i] == '\n') '\n' else ' ')
+                            i++
+                        }
+                    }
+                }
+                else -> {
+                    out.append(text[i])
+                    i++
+                }
+            }
+        }
+        return out.toString()
+    }
+
+    /** True when the local part is one of the synthetic words, with or without a suffix. */
+    private fun isPlaceholderHandle(handle: String): Boolean {
+        val local = handle.lowercase().substringBefore("@")
+        return placeholderLocalParts.any { local == it || local.startsWith("$it-") || local.startsWith("$it.") }
+    }
+
     private fun isAllowedAddress(address: String): Boolean {
         val lower = address.lowercase()
         val local = lower.substringBefore("@")
@@ -148,10 +296,20 @@ class PiiLintTest {
         if (local == "this") return true
 
         if (allowedEmailDomains.any { domain == it || domain.endsWith(".$it") }) return true
+        // The reserved `.example` TLD, used by the registry's own override fixtures.
+        if (domain == "example" || domain.endsWith(".example")) return true
         if (allowedEmailLocalParts.any { local == it }) return true
 
-        // A sender the app knows about is an institution, not a person.
-        return com.pennywiseai.parser.core.email.EmailSenderRegistry.resolve(lower) != null
+        val registry = com.pennywiseai.parser.core.email.EmailSenderRegistry
+        // A sender the app knows is an institution, not a person...
+        if (registry.resolve(lower) != null) return true
+        // ...and so is the parent company of one. The registry lists
+        // `noreply@notify.cloudflare.com`, which makes `billing@cloudflare.com` a Cloudflare
+        // address rather than somebody's personal mail.
+        return registry.knownSenders().any { known ->
+            val knownDomain = known.substringAfter("@", known)
+            knownDomain == domain || knownDomain.endsWith(".$domain")
+        }
     }
 
     private fun lineOf(text: String, offset: Int): Int =

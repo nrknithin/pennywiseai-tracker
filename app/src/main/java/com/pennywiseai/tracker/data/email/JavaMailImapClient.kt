@@ -12,11 +12,14 @@ import javax.inject.Singleton
 import javax.mail.AuthenticationFailedException
 import javax.mail.FetchProfile
 import javax.mail.Folder
+import javax.mail.FolderClosedException
 import javax.mail.FolderNotFoundException
 import javax.mail.Message
+import javax.mail.MessageRemovedException
 import javax.mail.MessagingException
 import javax.mail.Session
 import javax.mail.Store
+import javax.mail.StoreClosedException
 import javax.mail.UIDFolder
 import javax.mail.internet.InternetAddress
 import javax.mail.internet.MimeMessage
@@ -28,15 +31,18 @@ import javax.mail.search.ReceivedDateTerm
 import javax.mail.search.SearchTerm
 
 /**
- * The real IMAP client, and the only file in the app that imports `javax.mail`.
+ * The real IMAP client: the only file in the app that opens a connection to a mail server,
+ * and — together with [EmailBodyExtractor], which walks the MIME tree it hands back — one of
+ * the two that import `javax.mail` at all.
  *
  * Tuning is exactly spec 11 §11.3: `connectiontimeout` / `timeout` / `writetimeout` = 25 s,
  * `partialfetch=false`, `fetchsize=65536`; plus `ssl.checkserveridentity=true` and
  * `ssl.protocols=TLSv1.2 TLSv1.3` from spec 04 §4.1. There is no STARTTLS fallback and no
  * plaintext IMAP: the store protocol is `imaps` and nothing else.
  *
- * This is also the only file permitted to call [AppPassword.revealForImapLogin];
- * `PiiLintTest` fails the build on any other caller.
+ * This is also the only file permitted to call [AppPassword.revealForImapLogin] — and that
+ * is enforced rather than asserted: `PiiLintTest` counts the call sites of that name across
+ * the fork's sources and fails the build on a second one.
  *
  * **Why `javax.mail` and not `jakarta.mail`.** The dependency is
  * `com.sun.mail:android-mail:1.6.7` (with `android-activation`), the Android port of
@@ -107,8 +113,9 @@ class JavaMailImapClient @Inject constructor(
         val session = Session.getInstance(properties(config))
         val store = session.getStore(PROTOCOL)
         try {
-            // The one call site of revealForImapLogin(). The value goes straight into
-            // JavaMail and is never assigned to a local, so it cannot reach a log line here.
+            // The one call site of revealForImapLogin(), and the one PiiLintTest counts. The
+            // value goes straight into JavaMail and is never assigned to a local, so it
+            // cannot reach a log line here.
             store.connect(config.host, config.port, config.address, password.revealForImapLogin())
         } catch (e: AuthenticationFailedException) {
             // `e` is dropped on purpose: its message quotes the server reply, which on some
@@ -202,6 +209,12 @@ class JavaMailImapClient @Inject constructor(
 
         override val messageCount: Int = mapErrors(mailbox) { folder.messageCount }
 
+        /** What [perMessage] contained, in the order it happened. Guarded; see [record]. */
+        private val skipped = mutableListOf<UnreadableMessage>()
+
+        override val unreadable: List<UnreadableMessage>
+            get() = synchronized(skipped) { skipped.toList() }
+
         override suspend fun listFolders(): List<String> = withContext(Dispatchers.IO) {
             folderNames(folder.store)
         }
@@ -239,7 +252,12 @@ class JavaMailImapClient @Inject constructor(
                 }
             }
 
-            val uids = mapErrors(mailbox) { matches.map { uidFolder.getUID(it) } }
+            // Contained for the same reason the fetch loop contains its reads: one message
+            // the server will not answer for must not end the run. A dropped UID is simply
+            // not a candidate — it is below no watermark and will be searched again.
+            val uids = matches.mapNotNull { message ->
+                perMessage(uid = null) { uidFolder.getUID(message) }
+            }
             MailboxUidWindow.select(uids, sinceUid, limit)
         }
 
@@ -257,17 +275,29 @@ class JavaMailImapClient @Inject constructor(
 
                 val byUid = HashMap<Long, Message>(messages.size)
                 for (message in messages) {
-                    val uid = mapErrors(mailbox) { uidFolder.getUID(message) }
+                    // The UID is the only handle there is on a message. When reading *it* is
+                    // what failed there is nothing to key a log row on, so the failure is
+                    // recorded with a null uid (unknown stays unknown — spec 01 C7) and the
+                    // message leaves the batch.
+                    val uid = perMessage(uid = null) { uidFolder.getUID(message) } ?: continue
                     if (uid > 0) byUid[uid] = message
                 }
 
-                // Ordered by the caller's list; a UID the server no longer has is simply
-                // absent rather than a hole, a null, or an exception.
+                // Ordered by the caller's list; a UID the server no longer has, and one whose
+                // headers would not parse, are simply absent rather than a hole, a null, or an
+                // exception.
                 uids.mapNotNull { uid -> byUid[uid]?.let { toFetched(uid, it, maxBodyKb) } }
             }
 
-        private fun toFetched(uid: Long, message: Message, maxBodyKb: Int): FetchedMessage {
-            val header = mapErrors(mailbox) { headerOf(uid, message) }
+        /** One message, or null when it was skipped — see [perMessage] for which is which. */
+        private fun toFetched(uid: Long, message: Message, maxBodyKb: Int): FetchedMessage? {
+            // Contained per message. Spec 02 §2.7 grants that to a parser that throws on one
+            // message; a header that throws has to have it too, and for a harder reason. The
+            // watermark advances per *committed batch* (R-11-07), so a header failure thrown
+            // out of here would abort the batch, leave the watermark below this UID, and make
+            // every later run fetch this same message and die on it again — one malformed
+            // From header would stop the email channel permanently.
+            val header = perMessage(uid) { headerOf(uid, message) } ?: return null
             // Spec 11 step 8 says bodies are fetched lazily per message. They cannot be: a
             // JavaMail Message is only readable while its folder is open, so a lazy body would
             // throw once the session closed. Extracting inside the session costs one pass over
@@ -275,10 +305,19 @@ class JavaMailImapClient @Inject constructor(
             // EmailBodyExtractor documents that it never throws; this is the belt to that
             // brace. One unreadable body must not cost the batch (spec 02 section 2.7), and
             // the message is still returned so R-11-05 logs it and the Email Log can show why
-            // it is bare. ExtractedBody.EMPTY carries an empty body_hash, which dedup L0 is
-            // required to treat as "no evidence" rather than as a match.
+            // it is bare — `sourceMimeType = "none"` on a mail that plainly had a body is that
+            // record, which is why this one is not also filed under `unreadable`.
+            // ExtractedBody.EMPTY carries an empty body_hash, which dedup L0 is required to
+            // treat as "no evidence" rather than as a match.
             val body = try {
                 bodyExtractor.extract(message, maxBodyKb)
+            } catch (e: FolderClosedException) {
+                // Not this message's fault: the folder is gone, so every remaining read in
+                // this batch would "fail" too. Report it as what it is and let the worker
+                // retry (spec 11 §11.3, last line).
+                throw MailboxException.Network(e)
+            } catch (e: StoreClosedException) {
+                throw MailboxException.Network(e)
             } catch (e: MessagingException) {
                 ExtractedBody.EMPTY
             } catch (e: IOException) {
@@ -287,26 +326,15 @@ class JavaMailImapClient @Inject constructor(
             return FetchedMessage(header, body)
         }
 
-        private fun headerOf(uid: Long, message: Message): MailboxMessageHeader {
-            val rawFrom = message.from?.firstOrNull()
-            val address = (rawFrom as? InternetAddress)?.address ?: rawFrom?.toString()
-            // Normalised here rather than downstream so `email_messages.from_address` and the
-            // registry lookup can never disagree about what this sender is called.
-            val from = EmailSenderRegistry.normaliseAddress(address)
-                ?: address?.trim()?.lowercase()
-                ?: ""
-            val messageId = (message as? MimeMessage)?.messageID?.trim()?.takeIf { it.isNotEmpty() }
-            // INTERNALDATE first. sentDate is a fallback only because a header-less message
-            // still has to be logged; RFC 3501 makes the null branch unreachable on a
-            // compliant server, and dropping the message would be the larger data loss.
-            val receivedAt = (message.receivedDate ?: message.sentDate)?.toInstant() ?: Instant.now()
-            return MailboxMessageHeader(
-                uid = uid,
-                messageId = messageId,
-                from = from,
-                subject = message.subject.orEmpty(),
-                receivedAt = receivedAt
-            )
+        /** [readOneMessage], with a contained failure filed against [uid]. */
+        private fun <T> perMessage(uid: Long?, body: () -> T): T? =
+            readOneMessage(onContained = { failure -> record(uid, failure) }, body = body)
+
+        private fun record(uid: Long?, failure: Throwable) {
+            // `fetch` runs on Dispatchers.IO and a session outlives one call, so the list is
+            // guarded rather than assumed single-threaded. detailOf keeps it a class name:
+            // a provider message can quote the login, and the subject is the user's mail.
+            synchronized(skipped) { skipped += UnreadableMessage(uid, detailOf(failure)) }
         }
 
         private fun fetchProfile(): FetchProfile = FetchProfile().apply {
@@ -330,6 +358,81 @@ class JavaMailImapClient @Inject constructor(
         private const val FETCH_SIZE = "65536"
         private const val TLS_PROTOCOLS = "TLSv1.2 TLSv1.3"
     }
+}
+
+/**
+ * Runs one message's read, containing what is that message's problem and rethrowing what is
+ * the connection's.
+ *
+ * The line between the two is the whole point. Contained, so that the batch continues:
+ * a `From` header no address parser accepts, a `Content-Type` naming a charset the JVM does
+ * not know, a message expunged between the search and the fetch. Not contained:
+ * [FolderClosedException] and [StoreClosedException], which mean the socket is gone — every
+ * remaining message in the batch would then fail one by one, the batch would look complete,
+ * and the watermark would advance over mail that was never read. That is silent data loss,
+ * so it is reported as [MailboxException.Network] and the worker retries (spec 11 §11.3,
+ * last line).
+ *
+ * File-level and `internal` rather than a method on the session: the rule is about
+ * exceptions, not about folders, and this way it can be tested without standing up a
+ * `javax.mail` `Folder`.
+ *
+ * @param onContained called with the failure when one is contained, so the caller can file
+ *   it under [MailboxSession.unreadable]. Not called for a message the server expunged:
+ *   that is an absence, not a fault, and logging it as `ERROR:` would invent a failure.
+ * @return the value, or null when the read was contained.
+ */
+internal fun <T> readOneMessage(onContained: (Throwable) -> Unit, body: () -> T): T? = try {
+    body()
+} catch (e: MailboxException) {
+    throw e
+} catch (e: FolderClosedException) {
+    throw MailboxException.Network(e)
+} catch (e: StoreClosedException) {
+    throw MailboxException.Network(e)
+} catch (e: AuthenticationFailedException) {
+    // Mid-session re-authentication failed; `e` is dropped for the reason `connect` drops it
+    // — its message can quote the login (spec 04 §4.1).
+    throw MailboxException.Auth()
+} catch (e: MessageRemovedException) {
+    // The user deleted the mail between the search and the fetch.
+    null
+} catch (e: MessagingException) {
+    onContained(e)
+    null
+} catch (e: IOException) {
+    // A per-part decoding failure, not a dead socket: JavaMail signals a lost connection with
+    // FolderClosedException / StoreClosedException, both caught above.
+    onContained(e)
+    null
+}
+
+/**
+ * The IMAP envelope as [MailboxMessageHeader].
+ *
+ * Every read in here can throw on a malformed header, which is why callers wrap it in
+ * [readOneMessage] rather than trusting it.
+ */
+internal fun headerOf(uid: Long, message: Message): MailboxMessageHeader {
+    val rawFrom = message.from?.firstOrNull()
+    val address = (rawFrom as? InternetAddress)?.address ?: rawFrom?.toString()
+    // Normalised here rather than downstream so `email_messages.from_address` and the
+    // registry lookup can never disagree about what this sender is called.
+    val from = EmailSenderRegistry.normaliseAddress(address)
+        ?: address?.trim()?.lowercase()
+        ?: ""
+    val messageId = (message as? MimeMessage)?.messageID?.trim()?.takeIf { it.isNotEmpty() }
+    // INTERNALDATE first. sentDate is a fallback only because a header-less message
+    // still has to be logged; RFC 3501 makes the null branch unreachable on a
+    // compliant server, and dropping the message would be the larger data loss.
+    val receivedAt = (message.receivedDate ?: message.sentDate)?.toInstant() ?: Instant.now()
+    return MailboxMessageHeader(
+        uid = uid,
+        messageId = messageId,
+        from = from,
+        subject = message.subject.orEmpty(),
+        receivedAt = receivedAt
+    )
 }
 
 /**

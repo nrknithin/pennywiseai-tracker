@@ -52,6 +52,7 @@ object DateParse {
         "dd-MMM-yyyy",
         "d MMM, yyyy",
         "d MMM yyyy",
+        "d MMMM yyyy",
         "MMM d, yyyy",
         "MMMM d, yyyy",
         "EEEE, MMMM d, yyyy",

@@ -2,18 +2,22 @@ package com.pennywiseai.tracker.data.email
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,7 +31,12 @@ import javax.inject.Singleton
  */
 interface EmailAccountConfigStore {
 
-    /** Emits on every change. Already [EmailAccountConfig.coerced]. */
+    /**
+     * Emits on every change. Already [EmailAccountConfig.coerced].
+     *
+     * Never fails: storage that cannot be read emits the defaults instead of throwing, so a
+     * collector — the worker, the Home banner, screen 47 — has one less error state to hold.
+     */
     val config: Flow<EmailAccountConfig>
 
     suspend fun current(): EmailAccountConfig
@@ -71,7 +80,15 @@ interface EmailAccountConfigStore {
  * settings, and that "Forget all email data" can drop one file.
  */
 private val Context.finEmailSettingsDataStore: DataStore<Preferences> by preferencesDataStore(
-    name = "fin_email_settings"
+    name = "fin_email_settings",
+    // A truncated or garbled preferences file — a kill during a write, a restore of half a
+    // file, a full disk — otherwise throws `CorruptionException` (an `IOException`) out of
+    // *every* read and *every* write, for good. Reading past it is not enough on its own:
+    // `edit()` reads before it writes, so without this handler the settings could never be
+    // repaired from screen 47 either. Replacing the file loses the address, the folder and
+    // the watermark, all of which the user can re-enter and the next sync rebuilds — and
+    // R-11-08 recognises the already-logged messages a reset watermark re-fetches.
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }
 )
 
 /**
@@ -193,10 +210,40 @@ internal object EmailAccountConfigCodec {
 }
 
 /**
+ * The read side of the store as a pure flow transform: recover, then decode.
+ *
+ * Recovery first. DataStore's documented contract is that `data` throws [IOException] into
+ * the collector when the file cannot be read, and its documented answer is to catch that in
+ * the flow and emit [emptyPreferences] — which [EmailAccountConfigCodec.read] turns into the
+ * documented defaults rather than into zeros. Without it, one unreadable file takes down the
+ * sync worker, the Home banner and screen 47 together, none of which can do anything useful
+ * with a disk error.
+ *
+ * Only [IOException] is swallowed; anything else is rethrown untouched, because a cancelled
+ * read is not a corrupt file.
+ *
+ * It is an extension on `Flow<Preferences>` rather than a method so that it can be tested
+ * against a hand-built flow, with no `Context` and no DataStore file: the behaviour worth
+ * pinning down is what reaches the collector when the source throws.
+ */
+internal fun Flow<Preferences>.asEmailAccountConfig(): Flow<EmailAccountConfig> =
+    catch { error ->
+        if (error is IOException) emit(emptyPreferences()) else throw error
+    }.map { EmailAccountConfigCodec.read(it).coerced() }
+
+/**
  * DataStore-backed implementation, in its own `fin_email_settings` store.
  *
  * Every read goes through [EmailAccountConfig.coerced] so that a value written by an older
- * build, a restored backup or a hand edit is bounded before the worker ever sees it.
+ * build, a restored backup or a hand edit is bounded before the worker ever sees it, and
+ * through [asEmailAccountConfig] so that a file which cannot be read at all reads as the
+ * defaults instead of throwing at the collector.
+ *
+ * Writes still throw. That asymmetry is deliberate: a reader with no settings has something
+ * sensible to show (the "not configured" state), while a writer that silently lost the
+ * user's new app password or the batch watermark would be lying to it. An [IOException] out
+ * of [update] or [setWatermark] is the same signal as any other IO failure in a run — spec
+ * 11 §11.3's last line, `Result.retry()`.
  */
 @Singleton
 class DataStoreEmailAccountConfigStore @Inject constructor(
@@ -207,7 +254,7 @@ class DataStoreEmailAccountConfigStore @Inject constructor(
         get() = context.finEmailSettingsDataStore
 
     override val config: Flow<EmailAccountConfig> =
-        context.finEmailSettingsDataStore.data.map { EmailAccountConfigCodec.read(it).coerced() }
+        context.finEmailSettingsDataStore.data.asEmailAccountConfig()
 
     override suspend fun current(): EmailAccountConfig = config.first()
 

@@ -25,13 +25,18 @@ import java.time.Instant
  * @param failAfter how many messages the fake will hand out before every further [fetch]
  *   throws [failWith]. This is how AC-11-02 is tested without killing a process. Null means
  *   never fail.
+ * @param unreadableUids UIDs the fake answers the way the real client answers a message whose
+ *   headers will not parse: absent from the [MailboxSession.fetch] result, present in
+ *   [MailboxSession.unreadable], and — the point of the whole arrangement — costing that one
+ *   message rather than the batch.
  */
 class FakeMailboxClient(
     var messages: List<FetchedMessage> = emptyList(),
     var uidValidity: Long = 1,
     var connectionTest: ConnectionTest = ConnectionTest.Ok("[Gmail]/All Mail", 0, emptyList()),
     var failAfter: Int? = null,
-    var failWith: () -> MailboxException = { MailboxException.Network(IOException()) }
+    var failWith: () -> MailboxException = { MailboxException.Network(IOException()) },
+    var unreadableUids: Set<Long> = emptySet()
 ) : ImapMailboxClient {
 
     private val delivered = mutableListOf<Long>()
@@ -81,6 +86,10 @@ class FakeMailboxClient(
 
         override val messageCount: Int = messages.size
 
+        private val skipped = mutableListOf<UnreadableMessage>()
+
+        override val unreadable: List<UnreadableMessage> get() = skipped.toList()
+
         override suspend fun listFolders(): List<String> {
             val configured = when (val outcome = connectionTest) {
                 is ConnectionTest.Ok -> outcome.folders
@@ -125,6 +134,13 @@ class FakeMailboxClient(
             for (uid in uids) {
                 val budget = failAfter
                 if (budget != null && delivered.size >= budget) throw failWith()
+                if (uid in unreadableUids) {
+                    // The real client's contained failure: recorded, skipped, batch continues.
+                    // "MessagingException" is what JavaMail raises on a header it cannot parse,
+                    // and the real client records the class name and nothing else (spec 04 §4.1).
+                    skipped += UnreadableMessage(uid, "MessagingException")
+                    continue
+                }
                 val message = byUid[uid] ?: continue // vanished server-side between search and fetch
                 delivered += uid
                 fetched += message

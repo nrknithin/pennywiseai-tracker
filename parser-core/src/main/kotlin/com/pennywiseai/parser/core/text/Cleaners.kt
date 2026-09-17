@@ -5,7 +5,7 @@ package com.pennywiseai.parser.core.text
  *
  * Lives in `:parser-core` because it is text handling, and spec 02 §2.1 is explicit that no
  * parsing regex belongs in `:app`. `DedupEngine` compares merchants through this, so two
- * spellings of one merchant — `UPI-ACME STORE`, `acme store@okbank`, `ACME  STORE.` — have to
+ * spellings of one merchant — `UPI-ACME STORE`, `acme store someone@upi`, `ACME  STORE.` — have to
  * reduce to the same key or the same purchase is counted twice.
  */
 object Cleaners {
@@ -13,7 +13,7 @@ object Cleaners {
     /** Payment-rail prefixes banks staple onto a merchant name. */
     private val RAIL_PREFIX = Regex("""^(?:upi[-/]|vpa\s+|pos\s+|ecom\s+|imps[-/]|neft[-/]|ach[-/]|si\s+|mandate\s+)+""", RegexOption.IGNORE_CASE)
 
-    /** A trailing VPA handle: `acme store acme@okbank` -> `acme store`. */
+    /** A trailing VPA handle: `acme store someone@upi` -> `acme store`. */
     private val TRAILING_VPA = Regex("""\s*\S+@[a-z0-9.-]+\s*$""", RegexOption.IGNORE_CASE)
 
     /** Card-network noise: `XSOLLA *POKEMON` style asterisk segments and masked digits. */

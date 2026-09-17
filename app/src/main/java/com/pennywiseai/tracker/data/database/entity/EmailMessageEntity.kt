@@ -89,5 +89,60 @@ data class EmailMessageEntity(
 
     @ColumnInfo(name = "created_at")
     @Contextual
-    val createdAt: LocalDateTime = LocalDateTime.now()
-)
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+
+    /**
+     * Whether the MIME tree carried an attachment part (spec 11 §11.5 step 3).
+     *
+     * Recorded even in M1, where nothing reads it: the flag is free at extraction time and
+     * cannot be recovered afterwards, because M1 keeps only the extracted text and the body
+     * is trimmed after `retainBodiesDays`. M5's PDF statement rules would otherwise have to
+     * re-download the mailbox to learn which mails had a PDF at all.
+     */
+    @ColumnInfo(name = "has_attachments")
+    val hasAttachments: Boolean = false,
+
+    /**
+     * Attachment filenames joined by `;` (spec 03 §3.2, R-11-12), or null when there were
+     * none — never an empty string, so "no attachments" and "names unknown" cannot be told
+     * apart by accident.
+     *
+     * Use [encodeAttachmentNames] / [decodeAttachmentNames] rather than joining by hand.
+     */
+    @ColumnInfo(name = "attachment_names")
+    val attachmentNames: String? = null
+) {
+    companion object {
+
+        /**
+         * The separator spec 03 §3.2 names for `attachment_names`.
+         *
+         * A single character, not a comma: commas are common in real filenames while `;` is
+         * rejected by Windows and rare everywhere else. [encodeAttachmentNames] still
+         * substitutes it out of a name, because "rare" is not "never".
+         */
+        const val ATTACHMENT_NAME_SEPARATOR = ";"
+
+        /**
+         * `;`-joins [names] for storage, or null when there is nothing to store.
+         *
+         * Blank names are dropped (a MIME part may carry a `Content-Type` with no `name`)
+         * and a separator inside a name becomes a space, so a filename can never read back
+         * as two attachments.
+         */
+        fun encodeAttachmentNames(names: List<String>): String? = names
+            .asSequence()
+            .map { it.trim().replace(ATTACHMENT_NAME_SEPARATOR, " ") }
+            .filter { it.isNotEmpty() }
+            .joinToString(ATTACHMENT_NAME_SEPARATOR)
+            .takeIf { it.isNotEmpty() }
+
+        /** The inverse of [encodeAttachmentNames]; null or empty yields an empty list. */
+        fun decodeAttachmentNames(raw: String?): List<String> {
+            if (raw.isNullOrEmpty()) return emptyList()
+            return raw.split(ATTACHMENT_NAME_SEPARATOR)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
+    }
+}
