@@ -1,7 +1,9 @@
 package com.pennywiseai.tracker.worker
 
 import androidx.work.ListenableWorker
+import com.pennywiseai.tracker.data.database.dao.EmailMessageDao
 import com.pennywiseai.tracker.data.database.dao.SyncRunDao
+import com.pennywiseai.tracker.data.database.entity.EmailMessageEntity
 import com.pennywiseai.tracker.data.database.entity.SyncChannel
 import com.pennywiseai.tracker.data.database.entity.SyncRunEntity
 import com.pennywiseai.tracker.data.database.entity.SyncTrigger
@@ -32,6 +34,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import java.time.Clock
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 
 /**
@@ -446,6 +449,117 @@ class EmailSyncWorkerTest {
         )
     }
 
+    // -- section 11.2: body retention ------------------------------------------------------------
+
+    @Test
+    fun `a completed run trims bodies once, at retainBodiesDays before now`() {
+        val harness = harness(
+            messages = (1L..120L).map { mailboxMessage(uid = it) },
+            config = testConfig(maxMessagesPerSync = 500, batchSize = 50)
+                .copy(retainBodiesDays = 90)
+        )
+
+        harness.run()
+
+        // Off the per-batch path: three batches committed, one sweep. The sweep is a single
+        // UPDATE over the whole table, so running it per batch would be 3x the work for the
+        // same result - and 50x on a full window.
+        assertEquals(3, harness.committer.batches.size)
+        assertEquals(
+            LocalDateTime.ofInstant(TEST_NOW, ZoneOffset.UTC).minusDays(90),
+            LocalDateTime.parse(harness.emailMessages.trimCutoffs.single())
+        )
+    }
+
+    @Test
+    fun `the retention window defaults to the 400 days of spec 11 section 11_2`() {
+        val harness = harness(messages = listOf(mailboxMessage(uid = 1)))
+
+        harness.run()
+
+        assertEquals(400, harness.configStore.value.retainBodiesDays)
+        assertEquals(
+            LocalDateTime.ofInstant(TEST_NOW, ZoneOffset.UTC).minusDays(400),
+            LocalDateTime.parse(harness.emailMessages.trimCutoffs.single())
+        )
+    }
+
+    @Test
+    fun `a run that fetched nothing still trims, and trims again on the next run`() {
+        val harness = harness(messages = listOf(mailboxMessage(uid = 1)))
+
+        harness.run()
+        val second = harness.run() as EmailSyncOutcome.Completed
+
+        // Retention is measured in days, not in mail: a quiet mailbox still ages out. The
+        // second sweep is safe to repeat because the query only touches rows still long
+        // enough to shorten.
+        assertEquals(0, second.report.fetched)
+        assertEquals(2, harness.emailMessages.trimCutoffs.size)
+    }
+
+    @Test
+    fun `a stopped run leaves stored bodies alone`() {
+        val harness = harness(
+            messages = (1L..120L).map { mailboxMessage(uid = it) },
+            config = testConfig(maxMessagesPerSync = 500, batchSize = 50)
+        )
+
+        // WorkManager pulls the worker after the first batch commits, so 70 messages are
+        // still unfetched. Shortening bodies on the way out of a half-finished sweep would
+        // trim text the run has not finished processing.
+        val outcome = harness.run(shouldStop = { harness.committer.batches.isNotEmpty() })
+
+        assertTrue((outcome as EmailSyncOutcome.Completed).report.stopped)
+        assertTrue(harness.emailMessages.trimCutoffs.isEmpty())
+    }
+
+    @Test
+    fun `a failed run leaves stored bodies alone`() {
+        val authFailed = harness(messages = (1L..5L).map { mailboxMessage(uid = it) })
+        authFailed.client.connectionTest = ConnectionTest.AuthFailed
+        assertTrue(authFailed.run() is EmailSyncOutcome.AuthFailed)
+        assertTrue(authFailed.emailMessages.trimCutoffs.isEmpty())
+
+        val folderGone = harness(messages = (1L..5L).map { mailboxMessage(uid = it) })
+        folderGone.client.connectionTest =
+            ConnectionTest.FolderMissing(EmailAccountConfig.DEFAULT_FOLDER, listOf("INBOX"))
+        assertTrue(folderGone.run() is EmailSyncOutcome.FolderMissing)
+        assertTrue(folderGone.emailMessages.trimCutoffs.isEmpty())
+
+        val offline = harness(messages = (1L..5L).map { mailboxMessage(uid = it) })
+        offline.client.connectionTest = ConnectionTest.NetworkError("SocketTimeoutException")
+        assertTrue(offline.run() is EmailSyncOutcome.NetworkError)
+        assertTrue(offline.emailMessages.trimCutoffs.isEmpty())
+
+        val unconfigured = harness(
+            messages = listOf(mailboxMessage(uid = 1)),
+            credentials = FakeEmailCredentialStore()
+        )
+        assertEquals(EmailSyncOutcome.NotConfigured, unconfigured.run())
+        assertTrue(unconfigured.emailMessages.trimCutoffs.isEmpty())
+    }
+
+    @Test
+    fun `a database failure in the retention sweep does not fail a successful sync`() {
+        val harness = harness(messages = (1L..5L).map { mailboxMessage(uid = it) })
+        harness.emailMessages.failTrim = true
+
+        val outcome = harness.run()
+
+        // The mail is committed, the watermark is written and the run row is closed before
+        // the sweep runs; turning that into a retry would re-fetch the whole window because
+        // housekeeping could not write.
+        assertTrue(outcome is EmailSyncOutcome.Completed)
+        assertEquals(5, harness.committer.logged.size)
+        assertEquals(5L, harness.configStore.value.lastSyncedUid)
+        assertNull(harness.syncRuns.rows.single().errorMessage)
+        assertTrue(
+            EmailSyncWorker.resultFor(outcome, runAttemptCount = 0)
+                is ListenableWorker.Result.Success
+        )
+    }
+
     // -- harness ---------------------------------------------------------------------------------
 
     private fun harness(
@@ -468,6 +582,7 @@ class EmailSyncWorkerTest {
     ) {
         val committer = RecordingCommitter()
         val syncRuns = RecordingSyncRunDao()
+        val emailMessages = RecordingEmailMessageDao()
 
         private val runner = EmailSyncRunner(
             configStore = configStore,
@@ -475,6 +590,7 @@ class EmailSyncWorkerTest {
             mailbox = client,
             committer = committer,
             syncRuns = syncRuns,
+            emailMessages = emailMessages,
             clock = clock
         )
 
@@ -583,5 +699,46 @@ class EmailSyncWorkerTest {
         override suspend fun deleteAll() {
             rows.clear()
         }
+    }
+
+    /**
+     * The email log as the *runner* sees it - which is only the retention sweep of spec 11
+     * section 11.2. Everything the log is actually written through goes via
+     * [EmailBatchCommitter], so the rest of this interface is deliberately inert here.
+     */
+    private class RecordingEmailMessageDao : EmailMessageDao {
+
+        /** One entry per [trimBodiesBefore] call, in order, exactly as the runner formatted it. */
+        val trimCutoffs = mutableListOf<String>()
+
+        /** Models Room refusing the UPDATE - a full disk, a locked database. */
+        var failTrim = false
+
+        override suspend fun trimBodiesBefore(before: String): Int {
+            trimCutoffs += before
+            if (failTrim) error("room refused the update")
+            return 0
+        }
+
+        override suspend fun insert(message: EmailMessageEntity): Long = 0
+        override suspend fun update(message: EmailMessageEntity) = Unit
+        override suspend fun getById(id: Long): EmailMessageEntity? = null
+        override suspend fun getByUid(mailbox: String, uid: Long): EmailMessageEntity? = null
+        override suspend fun getByMessageId(messageId: String): EmailMessageEntity? = null
+        override suspend fun countByUid(mailbox: String, uid: Long): Int = 0
+        override suspend fun maxUid(mailbox: String): Long? = null
+        override suspend fun count(): Int = 0
+        override fun countFlow(): Flow<Int> = emptyFlow()
+        override fun observeRecent(limit: Int, offset: Int): Flow<List<EmailMessageEntity>> =
+            emptyFlow()
+
+        override suspend fun getUnmatched(): List<EmailMessageEntity> = emptyList()
+        override fun observeBySkipReason(pattern: String): Flow<List<EmailMessageEntity>> =
+            emptyFlow()
+
+        override suspend fun getByTransactionId(transactionId: Long): List<EmailMessageEntity> =
+            emptyList()
+
+        override suspend fun deleteAll() = Unit
     }
 }

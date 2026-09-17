@@ -9,7 +9,7 @@ blocks the build.
 
 - **Baseline:** upstream `sarim2000/pennywiseai-tracker` @ `c512c7c` (15 Sep 2026, schema v62)
 - **Branch:** `fin/main` — never pushed by automation
-- **Last updated:** 2026-09-18 (email pipeline wired end to end; both gates green, 2,823 tests)
+- **Last updated:** 2026-09-18 (M1d's four review defects closed; both gates green, 2,852 tests)
 
 ## Toolchain
 
@@ -39,7 +39,7 @@ Build commands (`JAVA_HOME` must point at the Temurin 21 above):
 | M1a | Email parsers (parser-core) | — | **done** | included in the 2,175 above |
 | M1b | Room v63 schema | 63 | **done** | `./init.sh app` green |
 | M1c | IMAP client + body extractor + credential store | 63 | **done** | green: FakeMailboxClientTest 17, ImapSyncAlgorithmTest 10, ImapMessageReadTest 12, EmailBodyExtractorTest 22 |
-| M1d | Ingest pipeline + dedup engine | 63 | in-progress | Wired end to end and green: DedupEngineTest 68, EmailTransactionIngestorTest 23, EmailSyncWorkerTest 15, PlausibleDueSettlerTest 17, DueMergeEngineTest 50, DueRepositoryTest 16, IngestingEmailBatchProcessorTest 9. **One open merge bug** found by review after the gate — see Next action item 1. Not `done` until that is fixed and a real sync is watched on a device. |
+| M1d | Ingest pipeline + dedup engine | 63 | in-progress | Wired end to end and green: DedupEngineTest 68, EmailTransactionIngestorTest 23, EmailSyncWorkerTest 21, PlausibleDueSettlerTest 17, DueMergeEngineTest 60, DueRepositoryTest 18, IngestingEmailBatchProcessorTest 9, RoomOwnAccountSourceTest 11. All four code defects the 2026-09-17 review found are fixed and pinned by tests. What is left is **not code**: no screen can connect a mailbox yet, so `EmailSyncRunner.run()` returns `NotConfigured` on every real run — see NEEDS-YOU.md, "How a mailbox gets connected". Not `done` until a real sync is watched on a device. |
 | M2 | Pending, commitments, settings backbone | 64 | todo | Commitments entered via UI; dues generated with no false "late" |
 | M3 | Money plan | 65 | todo | Cycle shows spendable + run-rate from entered salary |
 | M4 | Loans and EMI | 66 | todo | Schedules built; EMI debits settle schedule rows |
@@ -66,43 +66,69 @@ Build commands (`JAVA_HOME` must point at the Temurin 21 above):
   enqueues `EmailSyncWorker.enqueuePeriodic` on process start
 - `PiiLintTest` widened from 88 to 159 scanned files (adds `data/database`, `worker`, `di`,
   `parser/core/test`), with a self-expiring `pending` flag and a per-path staleness assertion
-  so a renamed package fails the build instead of going quiet
+  so a renamed package fails the build instead of going quiet; `data/repository` (main and test)
+  added on 2026-09-18, which closes the disagreement with FORK-CHANGES.md
+- `app`: **the 2026-09-17 review's four defects are closed**, each with the tests that pin it —
+  §20.7 now beats §20.4 step 4's unqualified "fill nulls", so a settled due takes neither an
+  `amount` nor a `minimum_due` it never had (DueMergeEngineTest 50 → 60, verified by temporarily
+  reverting the fix and watching exactly the four new tests go red); `dues` gains two boolean
+  columns, `amount_stated` and `auto_dismissed`, so no machine decision reads the user-editable
+  `note` any more (`63.json` re-exported in the same commit, no migration — v63 has never
+  shipped); `RoomOwnAccountSource` has its first test suite (11 tests over the
+  `account_balances` + `cards` union, including the two ways §14.5 can lose an own account)
+- `app`: `EmailMessageDao.trimBodiesBefore` has a caller at last — `EmailSyncRunner` sweeps once
+  at the end of every completed, unstopped run, at `retainBodiesDays` before the injected clock.
+  The query now truncates to 512 characters instead of emptying the column (spec 04 §4.3), and
+  is idempotent (`length(body) > 512`). EmailSyncWorkerTest 15 → 21
 
 ## Next action
 
-The four items that stood here on 2026-09-17 are all done: `DueWriter` has a production
-implementation, `EmailBatchProcessor` binds to the real ingestor, the three missing DAOs are
-provided, and the worker is enqueued at process start. A real sync now parses mail.
+All four defects that stood here on 2026-09-17 are fixed and pinned by tests — the settled-due
+merge bug, the two machine decisions keyed off the user-editable note, the `PiiLintTest` gap on
+`data/repository`, and the missing `RoomOwnAccountSource` suite. See "Done" for what each became.
 
-Both gates are green, but a code review run **after** the gate found defects the tests do not
-cover. Fix these before starting M2, hardest first:
+M1d's code is finished. What keeps it out of `done` is not code: **nothing in the app can
+connect a mailbox**, so `EmailSyncRunner.run()` returns `NotConfigured` on every periodic run.
+That is an owner decision (pull spec 47's Email Settings screen forward into M1d, or accept a
+developer-only entry point and leave 47 in M2) and it is written up in NEEDS-YOU.md. Do not
+invent a third answer here; build M2 around it.
 
-1. **Bug — `DueMergeEngine.merge()` rewrites a settled due's amount.** In the `amount` /
-   `minimumDue` ladder the `stated == null` branch is evaluated before `mayOverwrite`, so the
-   `frozen` guard never reaches a due whose amount was never stated. A row settled against
-   "amount not stated", then re-described by a low-rank aggregator copy, silently acquires that
-   aggregator's figure while keeping the `Amount not stated` note — so screen 33 still shows
-   "—" for a row that now holds a number. Reorder the branches and add the missing test case
-   (settled **and** unknown-amount; the two existing tests each cover only one half).
-2. **Risk — machine decisions keyed off the user-editable `dues.note` string.** `statedAmount`
-   tests `note != AMOUNT_NOT_STATED_NOTE` and `frozen` tests `note != NOTHING_DUE_NOTE`, both by
-   exact equality. A user typing in the note turns an unknown amount into a stated zero (a C7
-   violation) or freezes an auto-dismissed due forever. Needs a flag that is not free text.
-3. **Gap — `PiiLintTest` does not scan `data/repository`.** `DueRepository.kt` and
-   `DueRepositoryTest.kt` were added there this run, the test file carries last-4s and sender
-   addresses, and FORK-CHANGES.md already lists the package as fork-owned. The two documents
-   disagree; add the main and test paths to `forkOwnedPaths`.
-4. **Gap — `RoomOwnAccountSource` has no test.** Every `IngestingEmailBatchProcessorTest` fakes
-   the `OwnAccountSource` seam, so the production set-union over `account_balances` + `cards`
-   is unexercised. A hole in spec 14 §14.5's own-account list makes `DedupEngine` file a
-   transfer between the owner's own banks as INCOME, and nothing would go red.
-5. Three nits, cheap and worth doing while the code is warm: `MergeOutcome.escalation` is
-   computed on every merge and dropped by its only caller (and its notice-kind mapping is
-   duplicated verbatim in `EmailTransactionIngestor` with no test pinning the copies together);
-   `newDue` stores `currency` un-normalised while `dueId()` and `isCandidate()` normalise it two
-   different ways; and `DueRepository.candidatesFor` matches reference and `account_last4`
-   byte-exactly in SQL where the engine compares them trimmed/lowercased and digits-only, so
-   the engine's tolerance is unreachable through the repository.
+Both gates are green. The review that followed this gate found three new things. None is live
+today; all three are cheap now and expensive later:
+
+1. **Risk — `init.sh` prints "Verification passed" even when Gradle ran no tests.** The first
+   invocation this run reported `:parser-core:test UP-TO-DATE` and
+   `:app:testStandardDebugUnitTest UP-TO-DATE`, `BUILD SUCCESSFUL in 1s`, and then the green
+   checkmark; only after `./gradlew clean` did 2,175 + 677 tests actually execute. An agent that
+   runs the gate and quotes that checkmark can honestly believe it verified a change it never
+   compiled — which makes rule 7 unenforceable. Make the script assert that the test tasks
+   executed (parse the JUnit XML timestamps, or fail when every task is up to date).
+2. **Risk — a trimmed email body is byte-indistinguishable from a genuinely short one.** The
+   retention sweep now writes `substr(body, 1, 512)` and nothing on the row records that it
+   happened: `EmailMessageEntity` has no trimmed flag, and `body_hash` stays the hash of the
+   untruncated text. `EmailMessageDao.getUnmatched()` is exactly the backlog R-11-10 replays, so
+   once that is bound, a 512-character prefix ending mid-figure would be parsed as a whole mail
+   and the evidence would already be gone. It has no caller yet, so this is latent — settle it
+   before M5/R-11-10 binds it. v63 has not shipped, so a flag column is still free.
+3. **Gap — nothing executes the trim query.** The six new `EmailSyncWorkerTest` cases assert the
+   cutoff string handed to a fake DAO; "truncates rather than empties" and "the `length` guard
+   makes it idempotent" are verified only by Room's compile-time SQL check. There is no
+   Robolectric and no in-memory-Room harness anywhere in `app/src/test`, and `app/src/androidTest`
+   holds only the upstream placeholder. One DAO-level harness would cover this and the whole of
+   M2's schema work.
+4. Nits, three carried over and four new. Carried: `MergeOutcome.escalation` is computed on every
+   merge and dropped by its only caller (its notice-kind mapping is duplicated verbatim in
+   `EmailTransactionIngestor` with no test pinning the copies together); `newDue` stores
+   `currency` un-normalised while `dueId()` and `isCandidate()` normalise it two different ways;
+   and `DueRepository.candidatesFor` matches reference and `account_last4` byte-exactly in SQL
+   where the engine compares them trimmed/lowercased and digits-only, so the engine's tolerance
+   is unreachable through the repository. New: `EmailSyncWorker`'s comment calls the sweep "step
+   20's other half" when spec 11 §11.3 step 20 says nothing about trimming (the rule is 04 §4.3,
+   which never says *where* it runs); `trimBodies`' `coerceAtLeast(RETAIN_BODIES_MIN_DAYS)` is
+   unreachable because both config stores already coerce; four `RoomOwnAccountSourceTest`
+   assertions pin a registry order only the fake provides (the real query is `ORDER BY balance
+   DESC` and every fixture ties at 1000.00); and `EmailMessageDao` now has two hand-written fakes
+   where the shared one lacked a single method body.
 
 Then M2 (schema v64): commitments, the settings backbone, and `sender_overrides`.
 
@@ -112,6 +138,7 @@ Newest first. The workflow appends one row per run; never rewrite history here.
 
 | When | Command | Result |
 |---|---|---|
+| 2026-09-18 | `./gradlew clean` then `./init.sh parser` + `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser (161 suites) + 677 app (57 suites) = **2,852 tests, 0 failures, 0 errors, 0 skipped**. Run from a clean state deliberately: the first attempt reported every test task UP-TO-DATE and executed nothing while still printing the checkmark (Next action item 1). Grown this run: DueMergeEngineTest 50 → 60, DueRepositoryTest 16 → 18, EmailSyncWorkerTest 15 → 21, new RoomOwnAccountSourceTest 11. `PiiLintTest` 8, green — forced with `:parser-core:jvmTest --tests "*PiiLintTest*" --rerun-tasks`, because Gradle cannot see that its on-disk inputs changed. 141 compiler warnings, 0 errors, all pre-existing. One trap for whoever reads this next: on the first parser run after `clean`, Gradle wrote only 1 of the 161 JUnit XML files, so `parser-core/build/reports/tests/jvmTest/index.html` claimed 8 tests while the console printed 2,175 PASSED / 0 FAILED. A `--rerun-tasks` on the warm build directory produced all 161 and the same totals — a report-writing quirk, not lost tests. Count from the console or from a warm re-run |
 | 2026-09-18 | `./gradlew clean` then `./init.sh parser` + `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser + 648 app = **2,823 tests, 0 failures, 0 errors, 0 skipped**. Clean run, every task executed. New suites: DueMergeEngineTest 50, DueRepositoryTest 16, IngestingEmailBatchProcessorTest 9. `PiiLintTest` 8, green after its rewrite |
 | 2026-09-18 | `./init.sh app` ×4 | failed four times before the green run, **none of it code**: KSP `FileNotFoundException` / `NoSuchFileException` on generated Hilt files, a corrupted Kotlin incremental cache, and `Gradle build daemon has been stopped`. Cause found: a second `./init.sh app` was running against the same repo (two `bash.exe ./init.sh app` PIDs confirmed). `init.sh` has no lock. Serialise runs — and do not read these errors as a regression |
 | 2026-09-17 | `./init.sh app` @ `fin/main` | **GREEN** — 573 app unit tests, 0 failures, including every M1 suite |

@@ -84,10 +84,27 @@ interface EmailMessageDao {
 
     /**
      * Body trimming for `settings.email.retainBodiesDays` (default 400). The row and its
-     * outcome are kept; only the stored text goes, so the log stays complete while the
-     * database stops growing without bound.
+     * outcome are kept; only the bulk of the stored text goes, so the log stays complete
+     * while the database stops growing without bound.
+     *
+     * Truncated to 512 characters rather than emptied: spec 11 §11.2 says only "body
+     * trimming" while spec 04 §4.3 says "trims bodies older than N days to their first 512
+     * chars (keeps the twin hash)". The longer reading is the one that loses no data — those
+     * 512 characters are what screen 48's "show source" and R-11-10's re-processing have left
+     * to work with once a body ages out, and `body_hash` is a column of its own, so the twin
+     * hash survives either way. See docs/FORK-CHANGES.md.
+     *
+     * Idempotent, and that is what the `length(body) > 512` guard is for: after one sweep no
+     * row below the cutoff still matches, so a run that trims nothing writes nothing.
+     * Returns the number of rows actually shortened.
      */
-    @Query("UPDATE email_messages SET body = '' WHERE received_at < :before AND body != ''")
+    @Query(
+        """
+        UPDATE email_messages
+        SET body = substr(body, 1, 512)
+        WHERE received_at < :before AND length(body) > 512
+        """
+    )
     suspend fun trimBodiesBefore(before: String): Int
 
     @Query("DELETE FROM email_messages")

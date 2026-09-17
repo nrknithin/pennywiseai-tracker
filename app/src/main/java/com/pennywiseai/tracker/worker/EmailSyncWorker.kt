@@ -24,6 +24,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.pennywiseai.parser.core.email.EmailSenderRegistry
+import com.pennywiseai.tracker.data.database.dao.EmailMessageDao
 import com.pennywiseai.tracker.data.database.dao.SyncRunDao
 import com.pennywiseai.tracker.data.database.entity.SyncChannel
 import com.pennywiseai.tracker.data.database.entity.SyncRunEntity
@@ -43,6 +44,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -408,6 +410,8 @@ class EmailSyncRunner @Inject constructor(
     private val mailbox: ImapMailboxClient,
     private val committer: EmailBatchCommitter,
     private val syncRuns: SyncRunDao,
+    /** Only for the retention sweep of spec 11 section 11.2; the log itself is the committer's. */
+    private val emailMessages: EmailMessageDao,
     private val clock: Clock
 ) {
 
@@ -479,6 +483,10 @@ class EmailSyncRunner @Inject constructor(
         applyState(outcome.state())
         if (outcome is EmailSyncOutcome.Completed && !report.stopped) {
             configStore.markSynced(clock.instant())
+            // Step 20's other half. Once per completed run, never per batch: the sweep is a
+            // single UPDATE over a date-indexed column, and putting it on the batch path
+            // would run it fifty times for one run's worth of mail while the folder is open.
+            trimBodies(config)
         }
 
         // Step 22 - planRecomputer.markDirty() and alertEvaluator.requestRun() land with M3
@@ -672,6 +680,41 @@ class EmailSyncRunner @Inject constructor(
                 durationMs = Duration.between(startedAtInstant, clock.instant()).toMillis()
             )
         )
+    }
+
+    /**
+     * Retention sweep for `settings.email.retainBodiesDays` (spec 11 section 11.2, default
+     * 400 days; spec 04 section 4.3 for what survives it).
+     *
+     * Run only after a completed, unstopped sweep of the folder, for the same reason the
+     * watermark only moves after a commit: a run that was cut short or that failed part way
+     * has an unknown amount of mail still to fetch, and deleting text on the way out of a
+     * half-finished run would shorten bodies whose messages this device has not finished
+     * processing yet. Retention is measured in days - one skipped run costs nothing.
+     *
+     * A failure here is swallowed on purpose. By this point the mail is committed, the
+     * watermark is persisted and `sync_runs` is closed; turning a successful sync into a
+     * failed one because housekeeping could not write would make WorkManager retry the whole
+     * fetch, and the bodies would simply be trimmed on the next run instead.
+     */
+    private suspend fun trimBodies(config: EmailAccountConfig) {
+        // Belt and braces over EmailAccountConfig.coerced(): a retention of 0 arriving from a
+        // store that did not coerce would put the cutoff at "now" and shorten every body in
+        // the table, including the ones this very run just wrote.
+        val days = config.retainBodiesDays
+            .coerceAtLeast(EmailAccountConfig.RETAIN_BODIES_MIN_DAYS)
+            .toLong()
+        val cutoff = LocalDateTime.now(clock).minusDays(days)
+        try {
+            // `received_at` is stored as the text `Converters.fromLocalDateTime` writes, so
+            // the cutoff has to be formatted the same way: ISO local date-time compares
+            // lexicographically in chronological order, which is what `<` in the query needs.
+            emailMessages.trimBodiesBefore(cutoff.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // See the KDoc: housekeeping never fails a sync that already succeeded.
+        }
     }
 
     /**

@@ -59,6 +59,24 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   it is never hand-edited. The fork must either break that rule or replace the script.
   *Meanwhile:* the version stays untouched at upstream's value.
 
+- [ ] **How a mailbox gets connected — and therefore when M1d can close.** There is no way to
+  enter an email address, a folder or an app password in the app today. `presentation/` has no
+  email package, and outside `EmailSyncWorker` and `PennyWiseApplication` nothing reads
+  `EmailAccountConfigStore` or `EmailCredentialStore`. The periodic worker runs and
+  `EmailSyncRunner.run()` returns `NotConfigured` every single time, forever. Two ways out:
+  pull spec 47's Email Settings connect form forward into M1d, or accept a temporary
+  developer-only entry point (a debug menu item, deleted when screen 47 lands) and leave 47 in
+  M2 where spec 07's sequencing puts it. Both are deliberate deviations from the milestone
+  order, which is why the automation will not choose for you.
+  *This also corrects the Gmail app-password entry above:* its "typed into the app's Email
+  Settings screen at runtime" describes a screen that does not exist yet. The password itself is
+  still needed, still goes in `EncryptedSharedPreferences`, and still never touches the repo.
+  *Meanwhile:* M1d's engine work is finished and green — ingest, dedup, due merge, settlement,
+  commit and the retention sweep are all exercised end to end against a fake mailbox, so the
+  pipeline is defect-free behind the gap. M2's settings backbone brings screen 47 on its own
+  schedule if the answer is "leave it in M2", and nothing else waits on this.
+  *Where it goes:* nowhere in the repo — tell the next run which of the two, and it builds it.
+
 ---
 
 ## Your data (entered in the app, never in code)
@@ -99,6 +117,7 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-18 | How a mailbox gets connected — and therefore when M1d can close | M1d's last four code defects were fixed this run, which made the real blocker visible: the pipeline is complete and green but unreachable, because no screen can supply an address or an app password. Choosing between pulling screen 47 forward and a temporary developer entry point is a scope call, not a credential, so nothing in the repo can make it |
 | 2026-09-18 | Confirm the periodic email sync is scheduled | The pipeline was wired end to end this run, so the worker is now enqueued at process start. JVM tests cannot see a WorkManager job; only a device can |
 | 2026-09-18 | (no new blockers) | The **Gmail app password** above is now the single thing standing between the wired pipeline and a real sync — the code path behind it is complete and green. Not duplicated as a new entry |
 | 2026-09-17 | (seeded by hand) | Initial list from the spec review |
