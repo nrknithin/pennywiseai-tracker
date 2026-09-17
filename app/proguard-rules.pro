@@ -108,6 +108,27 @@
 # SLF4J (used by OpenCSV)
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 
+# JavaMail / android-mail (Fin email channel, spec 11).
+# JavaMail resolves its IMAP provider reflectively, by reading META-INF/javamail.*, so R8
+# sees no reference to it and strips it. The failure only shows at runtime, on the first
+# sync, as "no provider for imaps" — keep the provider classes.
+-dontwarn javax.mail.**
+-dontwarn com.sun.mail.**
+-keep class com.sun.mail.** { *; }
+-keep class javax.mail.** { *; }
+# android-activation ships the DataHandler support under this package name.
+-keep class myjava.awt.datatransfer.** { *; }
+-dontwarn myjava.awt.datatransfer.**
+
+# jsoup (email body extraction) — parses HTML reflectively in places.
+-keep class org.jsoup.** { *; }
+-dontwarn org.jsoup.**
+
+# Jetpack Security Crypto / Tink (the Gmail app password, spec 04 §4.1).
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.crypto.tink.**
+
 # PDFBox Android (used for PDF statement parsing)
 -keep class com.tom_roush.pdfbox.** { *; }
 -dontwarn com.tom_roush.pdfbox.filter.JPXFilter

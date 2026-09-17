@@ -77,25 +77,30 @@ class PiiLintTest {
     )
 
     /**
-     * Personal email addresses. Institutional sender addresses are the whole point of the
-     * sender registry and the ignore list, so those two files are exempt — an address like
-     * `alerts@hdfcbank.bank.in` identifies a bank, not a person.
+     * Personal email addresses.
+     *
+     * An institutional sender — `alerts@hdfcbank.bank.in`, `protect@cred.club` — identifies a
+     * bank, not a person, and appears legitimately in roughly thirty files: every email parser
+     * matches on one, and every fixture quotes one. So rather than keeping an exemption list
+     * that goes stale the moment a parser is added, an address is allowed when
+     * [EmailSenderRegistry] recognises it. That is self-maintaining: teaching the app a new
+     * sender teaches the lint at the same time, and an address the registry does not know is
+     * exactly the thing worth flagging.
+     *
+     * The pattern is case-SENSITIVE on purpose. Addresses in code and fixtures are lower-case,
+     * while Kotlin's qualified-this (`this@FakeMailboxClient.uidValidity`) is not — matching
+     * case-insensitively turns every one of those into a false failure.
      */
     private val emailRule = Rule(
         name = "email address",
-        pattern = Regex("""\b[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}\b""", RegexOption.IGNORE_CASE),
-        why = "A real email address. Use an example.com address, or add the file to the registry exemption if these are institutional senders.",
-        exemptFiles = setOf(
-            "EmailSenderRegistry.kt",
-            "EmailSenderRegistryTest.kt",
-            "IgnoreRules.kt",
-            "IgnoreRulesTest.kt",
-            "PiiLintTest.kt"
-        )
+        pattern = Regex("""\b[a-z0-9][a-z0-9._%+-]*@[a-z0-9.-]+\.[a-z]{2,}\b"""),
+        why = "A personal email address. Use an example.com address, or — if this is a bank or " +
+            "merchant sender — add it to EmailSenderRegistry, which is where senders belong anyway.",
+        exemptFiles = setOf("PiiLintTest.kt")
     )
 
-    /** Address shapes that are never a person: placeholders and institutional senders. */
-    private val allowedEmailDomains = listOf("example.com", "example.org", "example.in", "upi", "okbank")
+    /** Address shapes that are never a person. */
+    private val allowedEmailDomains = listOf("example.com", "example.org", "example.in", "example.net", "upi", "okbank")
     private val allowedEmailLocalParts = listOf("someone", "user", "test", "noreply", "no-reply", "payee")
 
     @TestFactory
@@ -138,8 +143,15 @@ class PiiLintTest {
         val lower = address.lowercase()
         val local = lower.substringBefore("@")
         val domain = lower.substringAfter("@")
-        return allowedEmailDomains.any { domain == it || domain.endsWith("." + it) } ||
-            allowedEmailLocalParts.any { local == it }
+
+        // Kotlin qualified-this that happens to look like an address (`this@Foo.bar`).
+        if (local == "this") return true
+
+        if (allowedEmailDomains.any { domain == it || domain.endsWith(".$it") }) return true
+        if (allowedEmailLocalParts.any { local == it }) return true
+
+        // A sender the app knows about is an institution, not a person.
+        return com.pennywiseai.parser.core.email.EmailSenderRegistry.resolve(lower) != null
     }
 
     private fun lineOf(text: String, offset: Int): Int =

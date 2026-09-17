@@ -10,4 +10,14 @@
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
 -->
+    <!--
+      Fin: the Gmail app password (spec 04 section 4.1, constraint C1).
+
+      android:allowBackup is already "false", so this is belt and braces — but the exclusion
+      is what keeps the rule true if allowBackup is ever flipped. The bytes are encrypted
+      with a key that lives in the Android Keystore and never leaves the device, so a
+      restored copy would be undecryptable anyway; shipping ciphertext off the phone at all
+      is the thing worth refusing.
+    -->
+    <exclude domain="sharedpref" path="fin_email_credentials.xml"/>
 </full-backup-content>

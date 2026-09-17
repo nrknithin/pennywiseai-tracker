@@ -143,6 +143,22 @@ android {
                 "META-INF/LICENSE-notice.md",
                 "META-INF/NOTICE.md",
             )
+            // JavaMail (com.sun.mail:android-mail + android-activation) finds its IMAP
+            // provider and its MIME type handlers by reading these resources at runtime.
+            // android-mail and android-activation both ship some of them, so the merger
+            // sees duplicates — pickFirsts keeps one copy. They must NOT be excluded: an
+            // APK without javamail.providers throws "no provider for imaps" on the first
+            // sync, and only at runtime.
+            pickFirsts += setOf(
+                "META-INF/javamail.providers",
+                "META-INF/javamail.default.providers",
+                "META-INF/javamail.address.map",
+                "META-INF/javamail.default.address.map",
+                "META-INF/javamail.charset.map",
+                "META-INF/mailcap",
+                "META-INF/mailcap.default",
+                "META-INF/mimetypes.default",
+            )
         }
     }
     buildFeatures {
@@ -249,6 +265,21 @@ dependencies {
     // Biometric Authentication
     implementation(libs.androidx.biometric)
 
+    // --- Fin: the email channel (spec 11, spec 04 §4.1) ---------------------------------
+    // JavaMail's Android port, for IMAPS. Its companion android-activation supplies the
+    // DataHandler / MIME registry; without it multipart bodies fail at runtime, not at
+    // compile time. :parser-core never sees either of these — it stays Android-free and
+    // is handed a plain String (spec 02 §2.1).
+    implementation(libs.android.mail)
+    implementation(libs.android.activation)
+
+    // HTML → text for email bodies, with Safelist.none() semantics (spec 04 §4.1).
+    implementation(libs.jsoup)
+
+    // MasterKey + EncryptedSharedPreferences for the Gmail app password. This is the only
+    // place the one secret in the app is stored (spec 04 §4.1, constraint C1).
+    implementation(libs.androidx.security.crypto)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
@@ -287,6 +318,18 @@ dependencies {
     
     testImplementation(libs.junit)
     testImplementation(libs.androidx.room.testing)
+
+    // --- Fin: JVM unit-test support for the email channel -------------------------------
+    // runTest / TestDispatcher. Pinned to the same 1.11.0 as coroutines-core above; a
+    // mismatched kotlinx-coroutines-test resolves the whole coroutines group back down.
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    // TestListenableWorkerBuilder for EmailSyncWorker. Already used by androidTest; the
+    // email worker's algorithm (windowing, batching, resume) is exercised as a JVM test.
+    testImplementation(libs.androidx.work.testing)
+    // JVM MockK, for stubbing the DAOs the ingestor talks to. mockk-android below is the
+    // instrumented build of the same library and cannot be used from src/test.
+    testImplementation(libs.mockk)
+
     androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

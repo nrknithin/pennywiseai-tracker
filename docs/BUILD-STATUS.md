@@ -69,4 +69,21 @@ Newest first. The workflow appends one row per run; never rewrite history here.
 
 | When | Command | Result |
 |---|---|---|
-| 2026-09-17 | `:parser-core:test` @ `c512c7c` | running — first Gradle invocation, downloading 9.7.1 |
+| 2026-09-17 | `./init.sh parser` @ `fin/main` | **failed before compiling** — the Gradle wrapper could not download its own distribution. `java.io.IOException: Downloading … gradle-9.7.1-bin.zip failed: timeout (10000ms)` at ~25%. Not a code failure; nothing was compiled. |
+| 2026-09-17 | `:parser-core:test` @ `c512c7c` | abandoned — same download, cancelled to free the link |
+
+## Known environment constraint
+
+This machine's link to Google and Gradle CDNs is running at **~22 KB/s**, while Maven Central
+measures 1.7 MB/s. Consequences, measured rather than guessed:
+
+- `gradle/wrapper/gradle-wrapper.properties` sets `networkTimeout=10000`, which a 22 KB/s link
+  exceeds on any stall, so the wrapper's own download aborts partway. Worked around by fetching
+  `gradle-9.7.1-bin.zip` with a resumable `curl` (retries + resume) and dropping it into
+  `~/.gradle/wrapper/dists/gradle-9.7.1-bin/<hash>/`, where the wrapper finds and SHA-verifies
+  it. Upstream's wrapper config is deliberately left untouched.
+- `dl.google.com` and `maven.google.com` were timing out entirely while that download ran.
+  Google Maven is where AGP, Compose and Room come from, so **if it stays unreachable the `app`
+  module cannot resolve dependencies at all** — and because `:app` is configured even for
+  `:parser-core:test`, that would block the parser gate too. Recheck once the link is idle
+  before concluding anything.

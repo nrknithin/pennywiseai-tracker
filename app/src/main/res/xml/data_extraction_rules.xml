@@ -9,11 +9,17 @@
         <include .../>
         <exclude .../>
         -->
+        <!-- Fin: the Gmail app password never goes to cloud backup (spec 04 section 4.1). -->
+        <exclude domain="sharedpref" path="fin_email_credentials.xml"/>
     </cloud-backup>
     <!--
-    <device-transfer>
-        <include .../>
-        <exclude .../>
-    </device-transfer>
+      Fin: device-to-device transfer is NOT covered by android:allowBackup="false" on
+      Android 12+, so this exclusion is the only thing stopping the credential file from
+      being copied to a new phone. The master key stays in the old phone's Keystore, so the
+      copy would be undecryptable — but the user should re-enter the password knowingly
+      rather than land in an AUTH_FAILED they cannot explain.
     -->
+    <device-transfer>
+        <exclude domain="sharedpref" path="fin_email_credentials.xml"/>
+    </device-transfer>
 </data-extraction-rules>

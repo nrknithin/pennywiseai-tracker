@@ -1,5 +1,8 @@
 [versions]
 agp = "9.2.1"
+# JavaMail's Android port. Its package is javax.mail.*, not jakarta.mail.* — Jakarta Mail 2.x
+# and angus-mail need java.beans and javax.activation, which Android does not ship.
+androidMail = "1.6.7"
 appUpdate = "2.1.0"
 appUpdateKtx = "2.1.0"
 biometric = "1.1.0"
@@ -14,6 +17,7 @@ hiltAndroidCompiler = "2.59.2"
 hiltCompiler = "1.3.0"
 hiltNavigationCompose = "1.3.0"
 hiltWork = "1.3.0"
+jsoup = "1.18.3"
 kotlin = "2.3.21"
 coreKtx = "1.18.0"
 junit = "4.13.2"
@@ -34,6 +38,12 @@ pdfboxAndroid = "2.0.27.0"
 review = "2.0.2"
 reviewKtx = "2.0.2"
 roomVersion = "2.8.4"
+# MasterKey + EncryptedSharedPreferences for the Gmail app password (spec 04 §4.1).
+# Pinned to the last alpha rather than "1.1.0": Jetpack Security Crypto was deprecated by
+# Google and 1.1.0 never went stable, so naming it would break dependency resolution
+# outright. alpha06 has been the de-facto release for years and is the version the design
+# note lists as the fallback. Bumping is a one-line change if a stable ever ships.
+securityCrypto = "1.1.0-alpha06"
 # litertlm >= 0.14 is compiled with -Xjvm-default=all and calls
 # SendChannel.close$default as an interface static. kotlinx-coroutines only
 # ships that static from 1.11.0 (built with jvm-default statics); app/build.gradle.kts
@@ -70,15 +80,19 @@ androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref =
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "roomVersion" }
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "roomVersion" }
 androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "roomVersion" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version = "2.6.1" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workVersion" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "workVersion" }
+android-activation = { module = "com.sun.mail:android-activation", version.ref = "androidMail" }
+android-mail = { module = "com.sun.mail:android-mail", version.ref = "androidMail" }
 app-update = { module = "com.google.android.play:app-update", version.ref = "appUpdate" }
 app-update-ktx = { module = "com.google.android.play:app-update-ktx", version.ref = "appUpdateKtx" }
 colorpicker-compose = { module = "com.github.skydoves:colorpicker-compose", version.ref = "colorpickerCompose" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hiltAndroid" }
 hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hiltAndroidCompiler" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -98,6 +112,7 @@ ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negoti
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktorVersion" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktorVersion" }
 markdown = { module = "org.jetbrains:markdown", version.ref = "markdown" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
 opencsv = { module = "com.opencsv:opencsv", version.ref = "opencsv" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
