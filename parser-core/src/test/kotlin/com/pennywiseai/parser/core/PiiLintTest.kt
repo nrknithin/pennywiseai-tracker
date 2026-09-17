@@ -404,6 +404,12 @@ class PiiLintTest {
         ForkPath("app/src/main/java/com/pennywiseai/tracker/di"),
         ForkPath("app/src/main/java/com/pennywiseai/tracker/cloud", pending = true),
         ForkPath("app/src/test/java/com/pennywiseai/tracker/data/email"),
+        // Shared with upstream, listed whole for the same reason as data/database above: a
+        // fork file landing here must not fall out of the scan. DueRepository lives here.
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/data/repository"),
+        ForkPath("app/src/test/java/com/pennywiseai/tracker/data/repository"),
+        ForkPath("app/src/test/java/com/pennywiseai/tracker/data/database"),
+        ForkPath("app/src/test/java/com/pennywiseai/tracker/worker"),
         ForkPath("app/src/test/java/com/pennywiseai/tracker/domain/engine"),
         ForkPath("cloud", pending = true)
     )
