@@ -111,6 +111,15 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
 
 ---
 
+## Resolved by following the spec — no decision needed
+
+- **How a mailbox gets connected.** M1d left this open: pull spec 47 (Email Settings) forward,
+  or leave it in M2. Spec 07 already schedules 47 in **M2**, which is the milestone now in
+  progress — so the default is simply to build it there, and no decision is required. M1d stays
+  `in-progress` until a real sync is watched on a device, which needs your Gmail app password
+  above rather than any code.
+  *Override this only if you want a developer-only entry point sooner.*
+
 ## Log
 
 Appended by the automation when it hits something new.
