@@ -1,0 +1,22 @@
+# Line endings are LF everywhere, in the index and in the working tree.
+#
+# Without this, a clone made with core.autocrlf=true writes CRLF into the working
+# tree while the index keeps LF, and the index caches the CRLF file size. Git then
+# reports those files clean even though their bytes differ from the blob — until
+# something touches one, at which point the whole file shows as modified. That
+# silently broke SupportedBanksDocTest and BankSamplesDocTest here: both compare
+# generated LF text against the checked-in file.
+* text=auto eol=lf
+
+# Keep binaries byte-exact.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.jar binary
+*.keystore binary
+*.jks binary
+*.zip binary
+*.task binary
+*.tflite binary
