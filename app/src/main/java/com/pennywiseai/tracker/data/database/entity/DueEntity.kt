@@ -55,11 +55,33 @@ data class DueEntity(
 
     /**
      * The total owed. May be zero for a "nothing due this month" statement, which the
-     * repository then auto-[DueStatus.DISMISSED]s with a note rather than showing as pending.
+     * repository then auto-[DueStatus.DISMISSED]s rather than showing as pending.
+     *
+     * Read it together with [amountStated]: zero-and-unstated is *unknown*, not nil.
      */
     @ColumnInfo(name = "amount")
     @Contextual
     val amount: BigDecimal = BigDecimal.ZERO,
+
+    /**
+     * True when some sender has actually **stated** [amount]; false while the figure is
+     * unknown and the column is holding its zero default.
+     *
+     * `dues.amount` is NOT NULL at v63 while `ParsedDue.amount` is nullable by design — a
+     * plan-expiry or insurance reminder names a date and no figure — so the difference between
+     * "nothing is owed" and "nobody said" has to live somewhere else. It used to live in the
+     * `note` marker `Amount not stated`, which the user can edit; editing it turned an unknown
+     * amount into a stated zero, which is spec 01 constraint C7 broken from the inside. The
+     * decision is a column now, and the note is display text only (docs/FORK-CHANGES.md).
+     *
+     * Defaults to **true**, which is the same reading the marker had: only positive evidence
+     * of ignorance means unknown. A row that arrives without the flag — a restored backup
+     * written before it existed, a hand-built row — carries a figure somebody meant, and
+     * calling it unstated would open it to being overwritten by the first aggregator copy that
+     * names a different number (spec 20 §20.4's ladder exists to stop exactly that).
+     */
+    @ColumnInfo(name = "amount_stated", defaultValue = "1")
+    val amountStated: Boolean = true,
 
     @ColumnInfo(name = "currency")
     val currency: String = "INR",
@@ -97,6 +119,20 @@ data class DueEntity(
     val status: DueStatus = DueStatus.OPEN,
 
     /**
+     * True when **the app itself** closed this due under R-20-09 — a card statement that stated
+     * zero, or a credit balance — rather than the user closing it.
+     *
+     * The distinction decides whether a later notice may re-open the row (spec 20 §20.7): the
+     * app may take back its own dismissal when a real bill turns up, and must never take back
+     * the user's. Like [amountStated] this was a `note` comparison (`Nothing due (statement)`)
+     * until a user editing that string could freeze an auto-dismissed due forever.
+     *
+     * Only ever true alongside [DueStatus.DISMISSED]; re-opening a row clears it.
+     */
+    @ColumnInfo(name = "auto_dismissed", defaultValue = "0")
+    val autoDismissed: Boolean = false,
+
+    /**
      * The one transaction that settled this due. Spec 01 rule 3 makes the relationship
      * strictly one-to-one — a due is settled by exactly one transaction, and a transaction
      * settles at most one due. Room cannot express "unique when non-null" in an index, so
@@ -116,6 +152,11 @@ data class DueEntity(
     @ColumnInfo(name = "email_message_id")
     val emailMessageId: Long? = null,
 
+    /**
+     * Free text: the sender's own description, one of the app's stand-in captions, or whatever
+     * the user typed over it. **Display only** — no rule reads it. Every decision that used to
+     * be encoded here is a column of its own ([amountStated], [autoDismissed]).
+     */
     @ColumnInfo(name = "note")
     val note: String? = null,
 

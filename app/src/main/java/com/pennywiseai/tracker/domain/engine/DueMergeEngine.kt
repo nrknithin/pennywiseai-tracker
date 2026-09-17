@@ -232,9 +232,9 @@ class DueMergeEngine @Inject constructor(
      * never to the aggregator (§20.4 step 5).
      *
      * R-20-09 is applied here: a card statement that states zero — or a credit balance, which
-     * reaches the app as a non-positive amount — is born [DueStatus.DISMISSED] with the note
-     * the requirement dictates, rather than sitting in Pending waiting for a payment that will
-     * never come.
+     * reaches the app as a non-positive amount — is born [DueStatus.DISMISSED] and flagged
+     * `auto_dismissed`, with the note the requirement dictates as its caption, rather than
+     * sitting in Pending waiting for a payment that will never come.
      */
     fun newDue(parsed: ParsedDue, emailMessageId: Long?): DueEntity {
         val timestamp = now()
@@ -245,9 +245,10 @@ class DueMergeEngine @Inject constructor(
             kind = storedKind(parsed.kind),
             // `dues.amount` is NOT NULL at v63 while `ParsedDue.amount` is nullable by design.
             // Zero is the only value the column can take, so the difference between "nothing is
-            // owed" and "the sender did not say" is carried by the note — see
-            // [AMOUNT_NOT_STATED_NOTE]. Dropping the due instead would lose its date as well.
+            // owed" and "the sender did not say" is carried by `amount_stated`. Dropping the
+            // due instead would lose its date as well.
             amount = parsed.amount ?: BigDecimal.ZERO,
+            amountStated = parsed.amount != null,
             currency = parsed.currency,
             minimumDue = parsed.minimumDue,
             dueDate = parsed.dueDate,
@@ -257,8 +258,10 @@ class DueMergeEngine @Inject constructor(
             autoPay = parsed.autoPay,
             autoPayInstrument = parsed.autoPayInstrument,
             status = if (nothingDue) DueStatus.DISMISSED else DueStatus.OPEN,
+            autoDismissed = nothingDue,
             source = DueSource.EMAIL,
             emailMessageId = emailMessageId,
+            // Display text. The two decisions it used to carry are the two flags above.
             note = noteFor(parsed, nothingDue),
             createdAt = timestamp,
             updatedAt = timestamp
@@ -298,9 +301,11 @@ class DueMergeEngine @Inject constructor(
         // a notice arrived. The notice is still kept in `due_sources`, so nothing is lost —
         // only the settled row is protected. The one exception is a due R-20-09 dismissed by
         // itself, which a later bill may legitimately re-open.
+        // `auto_dismissed`, not the note: the note is the user's to edit, and a decision keyed
+        // off free text is a decision the user can flip by typing (docs/FORK-CHANGES.md).
         val frozen = due.status.isSettled ||
             due.status == DueStatus.SKIPPED ||
-            (due.status == DueStatus.DISMISSED && due.note != NOTHING_DUE_NOTE)
+            (due.status == DueStatus.DISMISSED && !due.autoDismissed)
         val mayOverwrite = authoritative && !frozen
 
         // Bound to locals because `ParsedDue` lives in another module, so Kotlin will not smart
@@ -309,14 +314,31 @@ class DueMergeEngine @Inject constructor(
         val incomingMinimum = parsed.minimumDue
 
         val stated = statedAmount(due)
-        val amount = when {
-            incomingAmount == null -> due.amount
-            stated == null -> incomingAmount
-            mayOverwrite -> incomingAmount
-            else -> due.amount
+        // Whether this notice's figure becomes the row's, as one boolean rather than as a
+        // `when` over the amount: `amount_stated` has to move in lock-step with `amount`, and a
+        // flag derived from comparing the two figures afterwards would miss a sender restating
+        // the number the row already held — which is the flag drifting from the fact, the very
+        // failure the note marker had.
+        val takesAmount = when {
+            incomingAmount == null -> false
+            // §20.7 is tested before the null-fill, not after it. A settled due takes no figure
+            // at all — not even into a gap — because the alternative is the row silently
+            // acquiring an aggregator's number while it is still flagged amount-not-stated,
+            // which leaves screen 33 printing "—" over a due that now holds money (constraint
+            // C7). The notice is not lost: it is still recorded in `due_sources`, so the day the
+            // user re-opens the due the figure is there to be read back.
+            frozen -> false
+            stated == null -> true
+            else -> mayOverwrite
         }
+        val amount = incomingAmount.takeIf { takesAmount } ?: due.amount
+        val amountStated = due.amountStated || takesAmount
         val minimumDue = when {
             incomingMinimum == null -> due.minimumDue
+            // Same guard, same reason: a minimum owed is a figure, and a settled due's figures
+            // are closed. Spec 20 §20.4's "it may fill nulls" is a licence for a *lower-ranked*
+            // notice, not for a notice arriving after the money question was answered.
+            frozen -> due.minimumDue
             due.minimumDue == null -> incomingMinimum
             mayOverwrite -> incomingMinimum
             else -> due.minimumDue
@@ -333,17 +355,31 @@ class DueMergeEngine @Inject constructor(
             due.status == DueStatus.DISMISSED && amount.signum() > 0 && authoritative -> DueStatus.OPEN
             else -> due.status
         }
+        // Only the app's own dismissal is reversible, so only the app's own dismissal is
+        // recorded. A row that reaches here dismissed and not frozen was auto-dismissed
+        // already; re-opening it clears the flag, which is what makes the *next* dismissal —
+        // possibly the user's — final.
+        val autoDismissed = when {
+            frozen -> due.autoDismissed
+            status == DueStatus.DISMISSED -> due.autoDismissed || nothingDue
+            else -> false
+        }
+
+        // Display text from here down. These branches replace the app's own stand-in captions
+        // once they stop describing the row; a note the user has typed over matches neither
+        // constant, so it survives, and nothing below decides anything.
         val note = when {
             frozen -> due.note
             status == DueStatus.DISMISSED && nothingDue -> NOTHING_DUE_NOTE
-            // The figure arrived, so the marker that stood in for it must go.
-            due.note == AMOUNT_NOT_STATED_NOTE && incomingAmount != null -> parsed.description
+            // The figure arrived, so the caption that stood in for it must go.
+            due.note == AMOUNT_NOT_STATED_NOTE && takesAmount -> parsed.description
             due.note == NOTHING_DUE_NOTE && status == DueStatus.OPEN -> parsed.description
             else -> due.note ?: parsed.description
         }
 
         val merged = due.copy(
             amount = amount,
+            amountStated = amountStated,
             minimumDue = minimumDue,
             dueDate = dueDate,
             // Filling a null costs nothing and is what lets a bank statement teach a
@@ -355,6 +391,7 @@ class DueMergeEngine @Inject constructor(
             autoPay = due.autoPay || parsed.autoPay,
             autoPayInstrument = due.autoPayInstrument ?: parsed.autoPayInstrument,
             status = status,
+            autoDismissed = autoDismissed,
             note = note
         )
 
@@ -475,9 +512,17 @@ class DueMergeEngine @Inject constructor(
         return storedKind(parsed.kind) == DueKind.CARD_STATEMENT && amount.signum() <= 0
     }
 
-    /** The due's amount as a figure somebody actually stated, or null while none has been. */
+    /**
+     * The due's amount as a figure somebody actually stated, or null while none has been.
+     *
+     * `amount_stated` is the record of that, and nothing else is: the column cannot hold null
+     * at v63, and zero is a figure a card statement really does state (R-20-09). Reading the
+     * answer off `note` — as this did until the marker was retired — let a user edit turn an
+     * unknown amount into a stated zero, which screen 33 would then print as `₹0` for a bill
+     * nobody has sized (spec 01 constraint C7).
+     */
     private fun statedAmount(due: DueEntity): BigDecimal? =
-        due.amount.takeIf { due.note != AMOUNT_NOT_STATED_NOTE }
+        due.amount.takeIf { due.amountStated }
 
     private fun noteFor(parsed: ParsedDue, nothingDue: Boolean): String? = when {
         nothingDue -> NOTHING_DUE_NOTE
@@ -516,15 +561,22 @@ class DueMergeEngine @Inject constructor(
     fun storedKind(kind: ParserDueKind): DueKind = DueKind.fromStored(kind.name)
 
     companion object {
-        /** R-20-09's wording, verbatim. */
+        /**
+         * R-20-09's wording, verbatim — the **caption** on an auto-dismissed due.
+         *
+         * `dues.auto_dismissed` is what says the app dismissed the row; this only says so to
+         * the reader. A user who rewrites it changes what screen 33 prints and nothing else.
+         */
         const val NOTHING_DUE_NOTE = "Nothing due (statement)"
 
         /**
-         * Stands in for the null `dues.amount` the v63 column cannot hold.
+         * The caption on a due whose amount nobody has stated.
          *
-         * Read it as "the amount is unknown", never as zero: screen 33 shows "—" for a due
-         * carrying it (spec 01 constraint C7). The 63 to 64 migration can drop the marker the
-         * day the column becomes nullable.
+         * `dues.amount_stated` is the fact — `amount` is NOT NULL at v63, so a due with no
+         * figure holds zero and is flagged unstated, and screen 33 prints "—" for it (spec 01
+         * constraint C7). This string is how that reads on screen; the merge stopped deciding
+         * anything from it when the flag column arrived, and the day `amount` becomes nullable
+         * both can go.
          */
         const val AMOUNT_NOT_STATED_NOTE = "Amount not stated"
 

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 63,
-    "identityHash": "7899b4791dfb2998774ccb2a6dc2bd32",
+    "identityHash": "2637b8b11c41a7baed5f449ae4288947",
     "entities": [
       {
         "tableName": "transactions",
@@ -2199,7 +2199,7 @@
       },
       {
         "tableName": "dues",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `due_id` TEXT NOT NULL, `issuer` TEXT NOT NULL, `kind` TEXT NOT NULL, `amount` TEXT NOT NULL, `currency` TEXT NOT NULL, `minimum_due` TEXT, `due_date` TEXT NOT NULL, `account_last4` TEXT, `reference` TEXT, `period_label` TEXT, `auto_pay` INTEGER NOT NULL, `auto_pay_instrument` TEXT, `status` TEXT NOT NULL, `settled_transaction_id` INTEGER, `settled_at` TEXT, `source` TEXT NOT NULL, `email_message_id` INTEGER, `note` TEXT, `profile_id` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `due_id` TEXT NOT NULL, `issuer` TEXT NOT NULL, `kind` TEXT NOT NULL, `amount` TEXT NOT NULL, `amount_stated` INTEGER NOT NULL DEFAULT 1, `currency` TEXT NOT NULL, `minimum_due` TEXT, `due_date` TEXT NOT NULL, `account_last4` TEXT, `reference` TEXT, `period_label` TEXT, `auto_pay` INTEGER NOT NULL, `auto_pay_instrument` TEXT, `status` TEXT NOT NULL, `auto_dismissed` INTEGER NOT NULL DEFAULT 0, `settled_transaction_id` INTEGER, `settled_at` TEXT, `source` TEXT NOT NULL, `email_message_id` INTEGER, `note` TEXT, `profile_id` INTEGER NOT NULL, `created_at` TEXT NOT NULL, `updated_at` TEXT NOT NULL)",
         "fields": [
           {
             "fieldPath": "id",
@@ -2230,6 +2230,13 @@
             "columnName": "amount",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "amountStated",
+            "columnName": "amount_stated",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
           },
           {
             "fieldPath": "currency",
@@ -2279,6 +2286,13 @@
             "columnName": "status",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "autoDismissed",
+            "columnName": "auto_dismissed",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           },
           {
             "fieldPath": "settledTransactionId",
@@ -2682,7 +2696,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7899b4791dfb2998774ccb2a6dc2bd32')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2637b8b11c41a7baed5f449ae4288947')"
     ]
   }
 }

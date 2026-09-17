@@ -173,6 +173,7 @@ class DueMergeEngineTest {
         val dismissed = dueRow(
             dueId = engine.dueId(notice),
             status = DueStatus.DISMISSED,
+            autoDismissed = true,
             note = DueMergeEngine.NOTHING_DUE_NOTE
         )
         assertTrue(engine.isCandidate(dismissed, notice))
@@ -263,7 +264,20 @@ class DueMergeEngineTest {
         val due = engine.newDue(statement(amount = BigDecimal.ZERO), emailMessageId = 7)
 
         assertEquals(DueStatus.DISMISSED, due.status)
+        // The flag is the app saying "this dismissal was mine"; the note only says it on screen.
+        assertTrue(due.autoDismissed)
         assertEquals("Nothing due (statement)", due.note)
+        // Zero was stated, so it is a figure — this is the one dismissal that is not an unknown.
+        assertTrue(due.amountStated)
+    }
+
+    @Test
+    fun `a due nobody dismissed is not flagged as auto-dismissed`() {
+        val due = engine.newDue(statement(), emailMessageId = 7)
+
+        assertEquals(DueStatus.OPEN, due.status)
+        assertFalse(due.autoDismissed)
+        assertTrue(due.amountStated)
     }
 
     @Test
@@ -272,6 +286,7 @@ class DueMergeEngineTest {
         val due = engine.newDue(statement(amount = BigDecimal("-120.00")), emailMessageId = 7)
 
         assertEquals(DueStatus.DISMISSED, due.status)
+        assertTrue(due.autoDismissed)
         assertEquals(DueMergeEngine.NOTHING_DUE_NOTE, due.note)
     }
 
@@ -286,11 +301,12 @@ class DueMergeEngineTest {
 
     @Test
     fun `a notice that states no amount is kept open and marked unknown`() {
-        // Constraint C7: unknown is not zero. `dues.amount` is NOT NULL at v63, so the note
-        // carries the difference until the column can.
+        // Constraint C7: unknown is not zero. `dues.amount` is NOT NULL at v63, so
+        // `amount_stated` carries the difference until the column can.
         val due = engine.newDue(statement(amount = null), emailMessageId = 7)
 
         assertEquals(DueStatus.OPEN, due.status)
+        assertFalse(due.amountStated)
         assertEquals(DueMergeEngine.AMOUNT_NOT_STATED_NOTE, due.note)
         assertEquals(0, due.amount.signum())
     }
@@ -460,6 +476,95 @@ class DueMergeEngineTest {
         assertFalse(outcome.changed)
     }
 
+    @Test
+    fun `a paid due whose amount was never stated does not take a later figure`() {
+        // The C7 case the null-fill branch used to let through: the row was settled while
+        // nobody had said what it was for, so the "Amount not stated" note is the truth about
+        // it. Taking CRED's figure here would write money into a row that screen 33 still
+        // renders as "—" — a due that holds a number and shows an em-dash.
+        val paidUnknown = DueMergeEngine.Candidate(
+            dueRow(
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                note = DueMergeEngine.AMOUNT_NOT_STATED_NOTE,
+                status = DueStatus.PAID_ON_TIME
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.REMINDER))
+        )
+
+        val outcome = engine.merge(paidUnknown, credNotice(amount = BigDecimal("4321.50")))
+
+        assertEquals(0, outcome.due.amount.signum())
+        assertFalse(outcome.due.amountStated)
+        assertEquals(DueMergeEngine.AMOUNT_NOT_STATED_NOTE, outcome.due.note)
+        assertEquals(DueStatus.PAID_ON_TIME, outcome.due.status)
+        assertFalse(outcome.changed)
+    }
+
+    @Test
+    fun `not even the issuer's own statement re-states a settled due's unknown amount`() {
+        // The ladder is not the reason the figure is refused — §20.7 is. The top of the ladder
+        // is turned away exactly like the bottom of it.
+        val paidUnknown = DueMergeEngine.Candidate(
+            dueRow(
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                note = DueMergeEngine.AMOUNT_NOT_STATED_NOTE,
+                status = DueStatus.MARKED_PAID
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(paidUnknown, statement(amount = BigDecimal("4321.50")))
+
+        assertEquals(0, outcome.due.amount.signum())
+        assertEquals(DueMergeEngine.AMOUNT_NOT_STATED_NOTE, outcome.due.note)
+        assertFalse(outcome.changed)
+    }
+
+    @Test
+    fun `a settled due with no minimum on file does not take a later minimum`() {
+        // The minimumDue twin of the case above. A minimum owed is a figure like any other, and
+        // `minimum_due` being null is the same kind of gap as an unstated amount.
+        val paid = DueMergeEngine.Candidate(
+            dueRow(minimumDue = null, status = DueStatus.PAID_ON_TIME),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(paid, credNotice(minimumDue = BigDecimal("900.00")))
+
+        assertNull(outcome.due.minimumDue)
+        assertFalse(outcome.changed)
+    }
+
+    @Test
+    fun `a due the user dismissed takes neither a figure nor a minimum`() {
+        // `frozen` is wider than `isSettled`: a due the user closed by hand is just as final,
+        // and an unstated amount is not an invitation to fill it afterwards.
+        val dismissed = DueMergeEngine.Candidate(
+            dueRow(
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                minimumDue = null,
+                note = DueMergeEngine.AMOUNT_NOT_STATED_NOTE,
+                // The user's dismissal, not the app's — `auto_dismissed` is what says so now.
+                autoDismissed = false,
+                status = DueStatus.DISMISSED
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.REMINDER))
+        )
+
+        val outcome = engine.merge(
+            dismissed,
+            credNotice(amount = BigDecimal("4321.50"), minimumDue = BigDecimal("900.00"))
+        )
+
+        assertEquals(0, outcome.due.amount.signum())
+        assertNull(outcome.due.minimumDue)
+        assertEquals(DueStatus.DISMISSED, outcome.due.status)
+        assertFalse(outcome.changed)
+    }
+
     // =========================================================================================
     // R-20-09 through a merge
     // =========================================================================================
@@ -474,6 +579,7 @@ class DueMergeEngineTest {
         val outcome = engine.merge(existing, statement(amount = BigDecimal.ZERO))
 
         assertEquals(DueStatus.DISMISSED, outcome.due.status)
+        assertTrue(outcome.due.autoDismissed)
         assertEquals(DueMergeEngine.NOTHING_DUE_NOTE, outcome.due.note)
     }
 
@@ -485,6 +591,7 @@ class DueMergeEngineTest {
             dueRow(
                 amount = BigDecimal.ZERO,
                 status = DueStatus.DISMISSED,
+                autoDismissed = true,
                 note = DueMergeEngine.NOTHING_DUE_NOTE
             ),
             listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
@@ -494,20 +601,138 @@ class DueMergeEngineTest {
 
         assertEquals(DueStatus.OPEN, outcome.due.status)
         assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+        // The row is open again, so the app's claim on the dismissal is spent: the next one,
+        // which may be the user's, has to be final.
+        assertFalse(outcome.due.autoDismissed)
         assertNull(outcome.due.note)
     }
 
     @Test
     fun `a figure fills an amount nobody had stated`() {
         val unknown = DueMergeEngine.Candidate(
-            dueRow(amount = BigDecimal.ZERO, note = DueMergeEngine.AMOUNT_NOT_STATED_NOTE),
+            dueRow(
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                note = DueMergeEngine.AMOUNT_NOT_STATED_NOTE
+            ),
             listOf(source(1, AXIS_SENDER, NoticeKind.REMINDER))
         )
 
         val outcome = engine.merge(unknown, credNotice(amount = BigDecimal("4321.50")))
 
         assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+        assertTrue(outcome.due.amountStated)
         assertNull(outcome.due.note)
+    }
+
+    // =========================================================================================
+    // The two machine flags — `amount_stated` and `auto_dismissed`
+    //
+    // Both decisions used to be read off `dues.note`, by exact equality against the two
+    // constants below. The note belongs to the user (screen 33 lets them type in it), so the
+    // tests here are the ones that could not pass while it did: a note the user rewrote, and a
+    // note the user happened to write *as* one of the constants.
+    // =========================================================================================
+
+    @Test
+    fun `a user rewriting the note does not turn an unknown amount into a stated zero`() {
+        // The C7 case: the row holds zero because nobody has said what the bill is, and the
+        // user has typed their own caption over the app's. The figure must still be takeable.
+        val unknown = DueMergeEngine.Candidate(
+            dueRow(
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                note = "chasing this one up"
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.REMINDER))
+        )
+
+        val outcome = engine.merge(unknown, credNotice(amount = BigDecimal("4321.50")))
+
+        assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+        assertTrue(outcome.due.amountStated)
+        // Their words, not the app's: only the app's own captions are replaced.
+        assertEquals("chasing this one up", outcome.due.note)
+    }
+
+    @Test
+    fun `a user rewriting the note does not freeze an auto-dismissed due`() {
+        val dismissed = DueMergeEngine.Candidate(
+            dueRow(
+                amount = BigDecimal.ZERO,
+                status = DueStatus.DISMISSED,
+                autoDismissed = true,
+                note = "nil statement, nothing to do"
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(dismissed, statement(amount = BigDecimal("4321.50")))
+
+        assertEquals(DueStatus.OPEN, outcome.due.status)
+        assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+    }
+
+    @Test
+    fun `a user's own dismissal stays final even worded like the app's`() {
+        // The mirror image, and the reason equality against a string was never a decision: a
+        // user who dismisses a due and writes "Nothing due (statement)" over it has not given
+        // the app permission to re-open the row.
+        val dismissed = DueMergeEngine.Candidate(
+            dueRow(
+                status = DueStatus.DISMISSED,
+                autoDismissed = false,
+                note = DueMergeEngine.NOTHING_DUE_NOTE
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(dismissed, statement(amount = BigDecimal("4480.00")))
+
+        assertEquals(DueStatus.DISMISSED, outcome.due.status)
+        assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+        assertFalse(outcome.changed)
+    }
+
+    @Test
+    fun `a stated amount stays stated when a notice states nothing`() {
+        // `amount_stated` is a one-way latch: a reminder that names no figure says nothing
+        // about a figure the issuer already stated, and must not un-state it.
+        val known = DueMergeEngine.Candidate(
+            dueRow(amount = BigDecimal("4321.50")),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val outcome = engine.merge(known, statement(amount = null))
+
+        assertEquals(BigDecimal("4321.50"), outcome.due.amount)
+        assertTrue(outcome.due.amountStated)
+    }
+
+    @Test
+    fun `an unstated amount a notice restates as the same figure is still recorded as stated`() {
+        // The flag cannot be inferred by comparing the figures afterwards: here they agree, and
+        // the fact that changed is that somebody finally said so. A renewal reminder that named
+        // no price, then the invoice itself at zero — R-20-09 does not reach an invoice, so the
+        // row stays open and the zero it now holds is a figure rather than a gap.
+        val unknown = DueMergeEngine.Candidate(
+            dueRow(
+                issuer = "GoDaddy",
+                kind = StoredDueKind.INVOICE,
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                accountLast4 = null,
+                reference = "123456789012"
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.REMINDER))
+        )
+
+        val outcome = engine.merge(unknown, invoice(amount = BigDecimal.ZERO))
+
+        assertEquals(0, outcome.due.amount.signum())
+        assertTrue(outcome.due.amountStated)
+        assertEquals(DueStatus.OPEN, outcome.due.status)
+        assertTrue(outcome.changed)
     }
 
     // =========================================================================================
@@ -692,6 +917,10 @@ class DueMergeEngineTest {
         issuer: String = "Axis Bank",
         kind: StoredDueKind = StoredDueKind.CARD_STATEMENT,
         amount: BigDecimal = BigDecimal("4321.50"),
+        // The two machine flags, defaulted the way a row written by `newDue` from a notice that
+        // named a figure carries them. A test that cares passes its own.
+        amountStated: Boolean = true,
+        autoDismissed: Boolean = false,
         currency: String = "INR",
         minimumDue: BigDecimal? = null,
         dueDate: LocalDate = LocalDate.of(2026, 10, 1),
@@ -710,6 +939,7 @@ class DueMergeEngineTest {
         issuer = issuer,
         kind = kind,
         amount = amount,
+        amountStated = amountStated,
         currency = currency,
         minimumDue = minimumDue,
         dueDate = dueDate,
@@ -719,6 +949,7 @@ class DueMergeEngineTest {
         autoPay = autoPay,
         autoPayInstrument = autoPayInstrument,
         status = status,
+        autoDismissed = autoDismissed,
         source = source,
         note = note,
         createdAt = createdAt,

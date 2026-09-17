@@ -237,7 +237,36 @@ class DueRepositoryTest {
 
         val stored = dueDao.rows.getValue(result.dueRowId)
         assertEquals(DueStatus.DISMISSED, stored.status)
+        // The dismissal is the app's, and the column says so: the note is only its caption.
+        assertTrue(stored.autoDismissed)
         assertEquals("Nothing due (statement)", stored.note)
+    }
+
+    @Test
+    fun `a bill that states no figure is stored flagged, not as a zero`() = runBlocking {
+        // Constraint C7 through the repository: `dues.amount` is NOT NULL at v63, so the row
+        // holds zero and `amount_stated` is what keeps that from meaning "nothing is owed".
+        val result = repository.upsertFromParsed(statement(amount = null), 7)
+
+        val stored = dueDao.rows.getValue(result.dueRowId)
+        assertEquals(DueStatus.OPEN, stored.status)
+        assertFalse(stored.amountStated)
+        assertEquals(0, stored.amount.signum())
+    }
+
+    @Test
+    fun `a later figure is written to the row together with its flag`() = runBlocking {
+        // The pair has to survive a round trip through the DAO: a row updated to hold money
+        // while `amount_stated` stayed false would print "—" over a due that has a figure.
+        val unknown = repository.upsertFromParsed(statement(amount = null), 7)
+        noticeFor(unknown.dueRowId, AXIS_SENDER)
+
+        val billed = repository.upsertFromParsed(statement(), emailMessageId = 8)
+
+        assertEquals(unknown.dueRowId, billed.dueRowId)
+        val stored = dueDao.rows.getValue(billed.dueRowId)
+        assertEquals(BigDecimal("4321.50"), stored.amount)
+        assertTrue(stored.amountStated)
     }
 
     @Test
