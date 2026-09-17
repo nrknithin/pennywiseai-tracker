@@ -63,6 +63,16 @@ interface EmailMessageDao {
      *
      * Deliberately excludes `IGNORE:` and `NON_TXN`: those were understood and rejected on
      * purpose, and replaying them would just re-reject them.
+     *
+     * **A consumer must read [EmailMessageEntity.bodyTrimmed] on every row it takes from
+     * here.** When the flag is set, the row's `body` is at most the first 512 characters of
+     * the mail (spec 04 §4.3): the text can stop mid-amount, mid-reference or mid-date, and
+     * `body_hash` is the hash of the text that is gone, so neither the body nor the hash can
+     * tell the replay that anything is missing. Such a row may be re-parsed **only** after
+     * the full message has been re-fetched from the mailbox — by (`mailbox`, `uid`), or by
+     * `message_id` when UIDVALIDITY has moved (R-11-08). Failing that the consumer must leave
+     * it alone: parsing the prefix would record a figure nobody sent (spec 01 constraint C7),
+     * and the row stays on this backlog for a run that can re-fetch it.
      */
     @Query(
         """
@@ -97,11 +107,18 @@ interface EmailMessageDao {
      * Idempotent, and that is what the `length(body) > 512` guard is for: after one sweep no
      * row below the cutoff still matches, so a run that trims nothing writes nothing.
      * Returns the number of rows actually shortened.
+     *
+     * Every row it shortens is stamped `body_trimmed = 1`, because that is the only moment
+     * the fact exists: afterwards the prefix is indistinguishable from a short mail and
+     * `body_hash` still describes the text that was removed. Only rows the guard lets through
+     * are stamped, so a genuinely short aged body is left reading `0` — see
+     * [EmailMessageEntity.bodyTrimmed] and [getUnmatched], which is what R-11-10 replays.
      */
     @Query(
         """
         UPDATE email_messages
-        SET body = substr(body, 1, 512)
+        SET body = substr(body, 1, 512),
+            body_trimmed = 1
         WHERE received_at < :before AND length(body) > 512
         """
     )

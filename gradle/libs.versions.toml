@@ -37,6 +37,10 @@ opencsv = "5.12.0"
 pdfboxAndroid = "2.0.27.0"
 review = "2.0.2"
 reviewKtx = "2.0.2"
+# Robolectric — the Android runtime for JVM unit tests, which is what lets a real Room
+# database (and therefore real SQL) run under `./init.sh app` instead of only on a device.
+# Pinned rather than floating: this version decides which android-all jar Robolectric fetches.
+robolectric = "4.17"
 roomVersion = "2.8.4"
 # MasterKey + EncryptedSharedPreferences for the Gmail app password (spec 04 §4.1).
 # Pinned to the last alpha rather than "1.1.0": Jetpack Security Crypto was deprecated by
@@ -118,6 +122,7 @@ opencsv = { module = "com.opencsv:opencsv", version.ref = "opencsv" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfboxAndroid" }
 review = { module = "com.google.android.play:review", version.ref = "review" }
 review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "reviewKtx" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
 vision-internal-vkp = { group = "com.google.mlkit", name = "vision-internal-vkp", version.ref = "visionInternalVkp" }
 

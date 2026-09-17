@@ -27,6 +27,10 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   because Android refuses an update signed by a different key.
   *Meanwhile:* debug builds are unaffected; everything can be developed and tested without it.
   *Where it goes:* outside the repo, with a git-ignored `keystore.properties` pointing at it.
+  As of 2026-09-18 that is enforced rather than merely promised: `keystore.properties`,
+  `google-services.json` and `secrets.properties` are in `.gitignore` (unanchored, so a root copy
+  and an `app/` copy are both covered). Upstream ignored `*.jks` but not the properties file that
+  points at it — until this run, only the absence of the files kept the promise true.
 
 - [ ] **Firebase project** (only if you want M8 — the wake-up push and encrypted cloud snapshots).
   Four values — `projectId`, `appId`, `apiKey`, `senderId` — into git-ignored `local.properties`,
@@ -103,11 +107,26 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   ```
   As of 2026-09-18 `PennyWiseApplication` enqueues `EmailSyncWorker.enqueuePeriodic` on process
   start. This is the first change in the fork whose whole effect is a *background run*, and
-  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,823 green
+  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,897 green
   tests proves the job exists on a real device.
-  *Meanwhile:* the runner underneath it is tested headlessly (`EmailSyncWorkerTest`, 15 tests),
+  *Meanwhile:* the runner underneath it is tested headlessly (`EmailSyncWorkerTest`, 21 tests),
   so a scheduling problem would be the only thing this check could find.
   *Where it goes:* nowhere in the repo — it is a one-line confirmation after a cold start.
+
+- [ ] **A device or emulator session for the schema-migration suite**, when M2 gets there.
+  `AutoMigration(62, 63)` has never executed: the Robolectric harness added on 2026-09-18 runs
+  real SQL, but it proves the schema Room builds *from scratch*, which is a different statement
+  from "an existing v62 database survives the upgrade". The suite that would prove it needs
+  `MigrationTestHelper`, which reads each `NN.json` through the instrumentation context's assets —
+  so it has to live in `app/src/androidTest` and cannot run under `./init.sh` at all. Putting the
+  schemas where a unit test could reach them would mean shipping 2.3 MB of JSON inside the APK,
+  which is why it was not done.
+  *Meanwhile:* nothing waits on this, and nothing needs doing yet — the suite is not written.
+  M2's `Migration(63, 64)` is the fork's first hand-written migration and should land together
+  with it, at which point one device run covers both migrations at once. Batch it with the two
+  device checks above rather than making a separate trip.
+  *Where it goes:* nowhere in the repo — it is `./gradlew :app:connectedStandardDebugAndroidTest`
+  with a phone plugged in or an emulator up.
 
 ---
 
@@ -126,6 +145,8 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-18 | A device or emulator session for the schema-migration suite | The first Room-backed tests landed this run and run real SQL, which made the remaining hole precise rather than vague: they exercise the schema Room creates from scratch, never the upgrade path. `MigrationTestHelper` can only read the schema JSON through instrumentation assets, so the suite cannot run headlessly at any price worth paying. Nothing to do yet — filed so that M2's first hand-written migration is not written on the assumption that `./init.sh` can check it |
+| 2026-09-18 | (no new blockers) | The **Gmail app password** and the **`dumpsys jobscheduler` confirmation** are both still open and still the only two things between the green pipeline and a real sync. Neither was ticked here — the automation never ticks; that is the owner's signal. The keystore entry above gained one factual note: its git-ignore promise is now actually enforced by `.gitignore` rather than by the files not existing |
 | 2026-09-18 | How a mailbox gets connected — and therefore when M1d can close | M1d's last four code defects were fixed this run, which made the real blocker visible: the pipeline is complete and green but unreachable, because no screen can supply an address or an app password. Choosing between pulling screen 47 forward and a temporary developer entry point is a scope call, not a credential, so nothing in the repo can make it |
 | 2026-09-18 | Confirm the periodic email sync is scheduled | The pipeline was wired end to end this run, so the worker is now enqueued at process start. JVM tests cannot see a WorkManager job; only a device can |
 | 2026-09-18 | (no new blockers) | The **Gmail app password** above is now the single thing standing between the wired pipeline and a real sync — the code path behind it is complete and green. Not duplicated as a new entry |

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 63,
-    "identityHash": "2637b8b11c41a7baed5f449ae4288947",
+    "identityHash": "0384cadfab698edc1646456940a4e5f4",
     "entities": [
       {
         "tableName": "transactions",
@@ -2057,7 +2057,7 @@
       },
       {
         "tableName": "email_messages",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `mailbox` TEXT NOT NULL, `uid` INTEGER NOT NULL, `message_id` TEXT, `from_address` TEXT NOT NULL, `subject` TEXT, `body` TEXT NOT NULL, `body_hash` TEXT NOT NULL, `received_at` TEXT NOT NULL, `processed` INTEGER NOT NULL, `transaction_id` INTEGER, `due_count` INTEGER NOT NULL, `skip_reason` TEXT, `created_at` TEXT NOT NULL, `has_attachments` INTEGER NOT NULL, `attachment_names` TEXT)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `mailbox` TEXT NOT NULL, `uid` INTEGER NOT NULL, `message_id` TEXT, `from_address` TEXT NOT NULL, `subject` TEXT, `body` TEXT NOT NULL, `body_hash` TEXT NOT NULL, `received_at` TEXT NOT NULL, `processed` INTEGER NOT NULL, `transaction_id` INTEGER, `due_count` INTEGER NOT NULL, `skip_reason` TEXT, `created_at` TEXT NOT NULL, `has_attachments` INTEGER NOT NULL, `attachment_names` TEXT, `body_trimmed` INTEGER NOT NULL DEFAULT 0)",
         "fields": [
           {
             "fieldPath": "id",
@@ -2149,6 +2149,13 @@
             "fieldPath": "attachmentNames",
             "columnName": "attachment_names",
             "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bodyTrimmed",
+            "columnName": "body_trimmed",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           }
         ],
         "primaryKey": {
@@ -2696,7 +2703,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2637b8b11c41a7baed5f449ae4288947')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0384cadfab698edc1646456940a4e5f4')"
     ]
   }
 }

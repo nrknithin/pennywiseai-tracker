@@ -110,7 +110,37 @@ data class EmailMessageEntity(
      * Use [encodeAttachmentNames] / [decodeAttachmentNames] rather than joining by hand.
      */
     @ColumnInfo(name = "attachment_names")
-    val attachmentNames: String? = null
+    val attachmentNames: String? = null,
+
+    /**
+     * True once the `retainBodiesDays` sweep has shortened [body] (spec 04 §4.3).
+     *
+     * Without this column a trimmed body is byte-indistinguishable from a genuinely short
+     * one: the sweep writes `substr(body, 1, 512)` and leaves nothing else behind, and
+     * [bodyHash] deliberately still holds the hash of the *untruncated* text, so the hash
+     * cannot tell the two apart either. A 512-character prefix can stop mid-amount or
+     * mid-reference, and spec 11 R-11-10's replay reads exactly this backlog — so a reader
+     * that could not see the truncation would file a figure nobody sent (spec 01 constraint
+     * C7) with the evidence already gone.
+     *
+     * Recorded now because it is free now: `email_messages` does not exist at v62, so
+     * `AutoMigration(62, 63)` creates the column and only `63.json` is re-exported. Nothing
+     * reads it yet — R-11-10 is the first consumer, and what it owes this flag is written on
+     * `EmailMessageDao.getUnmatched`.
+     *
+     * Scope is the retention sweep alone. The `maxBodyKb` cap applied at extraction time is a
+     * different truncation with a different remedy (re-fetch with a larger cap), and nothing
+     * records it today; conflating the two here would make "re-fetch and re-parse" the wrong
+     * advice for half the rows carrying the flag.
+     *
+     * Defaults to false in SQL as well as in Kotlin (spec 03 §3.2's `D` column for a NN bool),
+     * and false is the only honest default: it says "no sweep has recorded a truncation for
+     * this row". Defaulting to true would put every message on R-11-10's re-fetch list and
+     * leave the replay with nothing it could run. No row predating the column can exist to be
+     * mis-read either way — v63 has never shipped.
+     */
+    @ColumnInfo(name = "body_trimmed", defaultValue = "0")
+    val bodyTrimmed: Boolean = false
 ) {
     companion object {
 

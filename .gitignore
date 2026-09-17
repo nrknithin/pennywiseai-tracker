@@ -58,6 +58,15 @@ RELEASE_NOTES.md
 *.keystore
 release.properties
 
+# Signing config and Firebase credentials. Owner-only files that live outside
+# the repo (docs/NEEDS-YOU.md, "Release keystore" and "Firebase project"); the
+# patterns are deliberately unanchored so a root copy and an app/ copy are both
+# ignored. Nothing here exists yet, and the point is that it never lands in a
+# commit if it starts to. See CLAUDE.md hard constraint: no credentials.
+keystore.properties
+google-services.json
+secrets.properties
+
 *.pem
 
 # Root-level deploy script may hold credentials; keep it local.

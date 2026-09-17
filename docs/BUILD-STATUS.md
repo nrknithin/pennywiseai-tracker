@@ -9,7 +9,7 @@ blocks the build.
 
 - **Baseline:** upstream `sarim2000/pennywiseai-tracker` @ `c512c7c` (15 Sep 2026, schema v62)
 - **Branch:** `fin/main` — never pushed by automation
-- **Last updated:** 2026-09-18 (M1d's four review defects closed; both gates green, 2,852 tests)
+- **Last updated:** 2026-09-18 (the gate can no longer pass without running tests; first Room-backed tests; `body_trimmed` at v63 — both gates green, 2,897 tests)
 
 ## Toolchain
 
@@ -25,9 +25,15 @@ Build commands (`JAVA_HOME` must point at the Temurin 21 above):
 
 | Scope | Command |
 |---|---|
-| Parsers, fast loop | `./init.sh parser` → `./gradlew :parser-core:test` |
-| App compile + unit tests | `./init.sh app` |
+| Parsers, fast loop | `./init.sh parser` → `./gradlew :parser-core:jvmTest --rerun` |
+| App compile + unit tests | `./init.sh app` → `./gradlew :app:testStandardDebugUnitTest --rerun` |
 | Everything CI gates on | `./init.sh` |
+
+`./init.sh` names `:parser-core:jvmTest`, not the `:parser-core:test` alias CI calls. The alias
+has no actions of its own, so Gradle reports it `UP-TO-DATE` even on a cold run; the two run the
+same tests. Every test task is run with `--rerun` after its `build/test-results/…` directory is
+cleared, and the script fails loudly if a test task's outcome line comes back anything but bare.
+A parser run therefore costs ~15s rather than ~1s on a warm build, because the tests really run.
 
 ## Milestones
 
@@ -80,6 +86,39 @@ Build commands (`JAVA_HOME` must point at the Temurin 21 above):
   at the end of every completed, unstopped run, at `retainBodiesDays` before the injected clock.
   The query now truncates to 512 characters instead of emptying the column (spec 04 §4.3), and
   is idempotent (`length(body) > 512`). EmailSyncWorkerTest 15 → 21
+- `app`: **SQL runs.** `app/src/test/.../data/database/RoomTestDb.kt` opens a real in-memory
+  `PennyWiseDatabase` under Robolectric (API pinned in `app/src/test/resources/robolectric.properties`),
+  and three DAO suites drive the v63 queries against it — `EmailMessageDaoTest` 18, `DueDaoTest` 16,
+  `TransactionSourceDaoTest` 11, **45 tests**. Spec 06 §6.1's "Repository / DAO tests" row, and the
+  first executed SQL in this repository. The trim sweep is now proven rather than asserted against a
+  fake; the merge key's three-way NULL handling on `account_last4`, `LOWER(issuer)`, `ORDER BY
+  due_date ASC LIMIT 1`, both unique indices and `countSameTemplate`'s `parser_id IS NOT NULL` are
+  all exercised against the database that will ship. Closes "Next action" item 3
+- **The gate can no longer pass without running tests.** `init.sh` used to print its checkmark
+  whenever Gradle exited 0, and a build whose test task is `UP-TO-DATE` exits 0 having run nothing —
+  three assessments in a row quoted that checkmark. The root cause was worse than suspected:
+  `:parser-core:test` is a lifecycle alias with no actions of its own, so it reported `UP-TO-DATE`
+  on *every* run, cold or warm, and its outcome never could have meant anything. The new
+  `verify_tests` helper deletes the task's `build/test-results/…` directory, runs it with `--rerun`
+  (which also defeats a build-cache hit), requires the Gradle outcome line to come back bare, and
+  then sums the JUnit XML — zero tests, any failure, or an all-skipped run is a loud failure that
+  says "Nothing here counts as verified." Proven by removing the forcing and watching it refuse a
+  warm build that Gradle called successful. Compile tasks are deliberately still allowed to be
+  `UP-TO-DATE`: Gradle re-hashes every input, so there "up to date" is genuine verification.
+  Closes "Next action" item 1
+- `.gitignore`: `keystore.properties`, `google-services.json` and `secrets.properties` are now
+  ignored, unanchored so root and `app/` copies are both covered. Upstream ignored `*.jks` but not
+  the properties file pointing at it, nor the Firebase config — NEEDS-YOU.md has been promising the
+  owner both were git-ignored, and until now only the absence of the files made that true
+- `app`: **the retention sweep now records that it truncated.** `email_messages` gains a third fork
+  column at v63 — `body_trimmed` (INTEGER bool, NN, `DEFAULT 0`) — written by `trimBodiesBefore` on
+  every row it actually shortens, because the moment of the `UPDATE` is the only time the fact
+  exists: afterwards a 512-character prefix is byte-identical in kind to a genuinely short mail, and
+  `body_hash` deliberately still holds the hash of the text that went. `getUnmatched`'s KDoc now
+  states the obligation this creates for R-11-10. `63.json` re-exported by the build, no migration
+  (v63 has never shipped). `EmailMessageDaoTest` 14 → 18, and the three that should fail were
+  watched failing under a mutation that drops `body_trimmed = 1` from the UPDATE.
+  Closes "Next action" item 2
 
 ## Next action
 
@@ -93,36 +132,60 @@ That is an owner decision (pull spec 47's Email Settings screen forward into M1d
 developer-only entry point and leave 47 in M2) and it is written up in NEEDS-YOU.md. Do not
 invent a third answer here; build M2 around it.
 
-Both gates are green. The review that followed this gate found three new things. None is live
-today; all three are cheap now and expensive later:
+Both gates are green, and all three risks that stood here on 2026-09-17 are closed — the gate's
+false checkmark, the unrecorded truncation, and the untested trim query. See "Done" for what each
+became. One consequence of closing the first is worth carrying: **every gate-log row below dated
+on or before 2026-09-18's second entry was produced by the old script**, so those "both gates
+green" claims were never proof that the tests ran. The 2,175 + 722 totals are independently
+corroborated by the runs since, but re-run `./init.sh` before marking M1d or anything above it
+`done` on the strength of an old row.
 
-1. **Risk — `init.sh` prints "Verification passed" even when Gradle ran no tests.** The first
-   invocation this run reported `:parser-core:test UP-TO-DATE` and
-   `:app:testStandardDebugUnitTest UP-TO-DATE`, `BUILD SUCCESSFUL in 1s`, and then the green
-   checkmark; only after `./gradlew clean` did 2,175 + 677 tests actually execute. An agent that
-   runs the gate and quotes that checkmark can honestly believe it verified a change it never
-   compiled — which makes rule 7 unenforceable. Make the script assert that the test tasks
-   executed (parse the JUnit XML timestamps, or fail when every task is up to date).
-2. **Risk — a trimmed email body is byte-indistinguishable from a genuinely short one.** The
-   retention sweep now writes `substr(body, 1, 512)` and nothing on the row records that it
-   happened: `EmailMessageEntity` has no trimmed flag, and `body_hash` stays the hash of the
-   untruncated text. `EmailMessageDao.getUnmatched()` is exactly the backlog R-11-10 replays, so
-   once that is bound, a 512-character prefix ending mid-figure would be parsed as a whole mail
-   and the evidence would already be gone. It has no caller yet, so this is latent — settle it
-   before M5/R-11-10 binds it. v63 has not shipped, so a flag column is still free.
-3. **Gap — nothing executes the trim query.** The six new `EmailSyncWorkerTest` cases assert the
-   cutoff string handed to a fake DAO; "truncates rather than empties" and "the `length` guard
-   makes it idempotent" are verified only by Room's compile-time SQL check. There is no
-   Robolectric and no in-memory-Room harness anywhere in `app/src/test`, and `app/src/androidTest`
-   holds only the upstream placeholder. One DAO-level harness would cover this and the whole of
-   M2's schema work.
-4. Nits, three carried over and four new. Carried: `MergeOutcome.escalation` is computed on every
+The review of this run found three new things:
+
+1. **Risk — `body_trimmed` is write-only, and the remedy its own KDoc prescribes has no reachable
+   code path.** `getUnmatched`'s KDoc says a flagged row may be re-parsed only after the full
+   message is re-fetched, and must otherwise stay on the backlog "for a run that can re-fetch it".
+   Three things make that last clause false today: `EmailMessageDao.insert` is
+   `OnConflictStrategy.IGNORE`, so a re-fetched `(mailbox, uid)` is dropped rather than replacing
+   the 512-character prefix; `ImapMailboxClient` only ever asks for `sinceUid+1..*`, so an aged
+   low-UID message is never offered to a sync run at all; and nothing anywhere writes
+   `bodyTrimmed = false`. A stamped row is therefore permanently unreplayable rather than
+   temporarily so. The flag itself is right and C7-safe — it fails closed — but the escape hatch
+   is missing and no test pins the obligation, so nothing will notice when M5 binds R-11-10 and
+   quietly parses the prefix anyway. Settle it with R-11-10, not before.
+2. **Risk — `DueDaoTest` never probes `findMergeCandidate`'s upper date bound**, despite a test
+   named "the date window includes both of its ends". Every row in the file sits at or below
+   `billed + 2` while `toDate` is `billed + 3`, so rewriting `due_date BETWEEN :fromDate AND
+   :toDate` as `due_date >= :fromDate` would leave the whole suite green — and that is the
+   direction that loses money, because an unbounded upper edge folds a future statement onto the
+   current one. One insert at `billed.plusDays(4)` with an `assertNull` closes it.
+3. **Gap — `AutoMigration(62, 63)` has still never executed.** The Robolectric harness proves the
+   schema Room creates *from scratch*, which is a different statement. The reason it cannot do
+   more is worth knowing before M2 writes a migration: `MigrationTestHelper` loads every `NN.json`
+   through the instrumentation context's *assets*, and the only asset tree a Robolectric unit test
+   can see is the app variant's merged assets — so making `app/schemas` readable from `./init.sh`
+   would mean shipping 2.3 MB of schema JSON in the production APK. The cheap route is the one
+   spec 06 §6.1 already names: an `app/src/androidTest` suite with
+   `androidTest.assets.srcDirs += files("$projectDir/schemas")`, which costs nothing in the APK
+   but needs a device, so it cannot be part of `./init.sh`. M2's `Migration(63, 64)` is the first
+   hand-written migration and should land together with it. Recorded in FORK-CHANGES.md.
+4. Nits, seven carried over and three new. New this run: `init.sh`'s `line="${line%$'\r'}"` CR-strip
+   can never fire for the CRLF case it was written for, because the `grep -E "^> Task ${task}( |$)"`
+   that produced the line cannot match a CR-terminated *bare* task line — on a CRLF log the gate
+   would fail loudly on a passing run, which is at least the safe direction; `verify_tests` runs
+   its `rm -rf "$results"` before Gradle, so a run that dies in compilation destroys the previous
+   run's reports along with the stale ones; and `EmailIngestFakes.emailRow()` still has no
+   `bodyTrimmed` parameter, which the first R-11-10 consumer should add with the test that needs
+   it. Carried: `MergeOutcome.escalation` is computed on every
    merge and dropped by its only caller (its notice-kind mapping is duplicated verbatim in
    `EmailTransactionIngestor` with no test pinning the copies together); `newDue` stores
    `currency` un-normalised while `dueId()` and `isCandidate()` normalise it two different ways;
    and `DueRepository.candidatesFor` matches reference and `account_last4` byte-exactly in SQL
    where the engine compares them trimmed/lowercased and digits-only, so the engine's tolerance
-   is unreachable through the repository. New: `EmailSyncWorker`'s comment calls the sweep "step
+   is unreachable through the repository — `DueDaoTest` now pins that byte-exact behaviour as
+   deliberate-for-now, with a comment saying a future `COLLATE NOCASE` should fail the test rather
+   than widen silently what counts as the same bill. Also carried, from this day's earlier runs:
+   `EmailSyncWorker`'s comment calls the sweep "step
    20's other half" when spec 11 §11.3 step 20 says nothing about trimming (the rule is 04 §4.3,
    which never says *where* it runs); `trimBodies`' `coerceAtLeast(RETAIN_BODIES_MIN_DAYS)` is
    unreachable because both config stores already coerce; four `RoomOwnAccountSourceTest`
@@ -138,6 +201,7 @@ Newest first. The workflow appends one row per run; never rewrite history here.
 
 | When | Command | Result |
 |---|---|---|
+| 2026-09-18 | `./init.sh parser` then `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser (161 suites) + 722 app (60 suites) = **2,897 tests, 0 failures, 0 errors, 0 skipped**, summed from the JUnit XML rather than taken from the script's own arithmetic. The first run gated by the rewritten `init.sh`: both test tasks' outcome lines came back bare after a forced `--rerun` on a cleared results directory, which is now the only way the checkmark can print. Grown this run: the three Room suites (`EmailMessageDaoTest` 18, `DueDaoTest` 16, `TransactionSourceDaoTest` 11 = **45 tests**, every one executing real SQL against an in-memory `PennyWiseDatabase`), including the four `body_trimmed` cases. `PiiLintTest` 8, green. **This row corrects the one first written for this run**, which said 718 app / 2,893 total / `EmailMessageDaoTest` 14: those figures were recorded before the four `body_trimmed` tests landed and the gate was never re-run against them. One-off cost on a cold machine: Robolectric fetches `android-all-instrumented-14-robolectric-10818077-i7.jar` (151 MB) from Maven Central into `~/.m2/repository` on its first run. Measured at ~1.5 MB/s here, unlike the Google CDNs |
 | 2026-09-18 | `./gradlew clean` then `./init.sh parser` + `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser (161 suites) + 677 app (57 suites) = **2,852 tests, 0 failures, 0 errors, 0 skipped**. Run from a clean state deliberately: the first attempt reported every test task UP-TO-DATE and executed nothing while still printing the checkmark (Next action item 1). Grown this run: DueMergeEngineTest 50 → 60, DueRepositoryTest 16 → 18, EmailSyncWorkerTest 15 → 21, new RoomOwnAccountSourceTest 11. `PiiLintTest` 8, green — forced with `:parser-core:jvmTest --tests "*PiiLintTest*" --rerun-tasks`, because Gradle cannot see that its on-disk inputs changed. 141 compiler warnings, 0 errors, all pre-existing. One trap for whoever reads this next: on the first parser run after `clean`, Gradle wrote only 1 of the 161 JUnit XML files, so `parser-core/build/reports/tests/jvmTest/index.html` claimed 8 tests while the console printed 2,175 PASSED / 0 FAILED. A `--rerun-tasks` on the warm build directory produced all 161 and the same totals — a report-writing quirk, not lost tests. Count from the console or from a warm re-run |
 | 2026-09-18 | `./gradlew clean` then `./init.sh parser` + `./init.sh app` @ `fin/main` | **GREEN** — 2,175 parser + 648 app = **2,823 tests, 0 failures, 0 errors, 0 skipped**. Clean run, every task executed. New suites: DueMergeEngineTest 50, DueRepositoryTest 16, IngestingEmailBatchProcessorTest 9. `PiiLintTest` 8, green after its rewrite |
 | 2026-09-18 | `./init.sh app` ×4 | failed four times before the green run, **none of it code**: KSP `FileNotFoundException` / `NoSuchFileException` on generated Hilt files, a corrupted Kotlin incremental cache, and `Gradle build daemon has been stopped`. Cause found: a second `./init.sh app` was running against the same repo (two `bash.exe ./init.sh app` PIDs confirmed). `init.sh` has no lock. Serialise runs — and do not read these errors as a regression |

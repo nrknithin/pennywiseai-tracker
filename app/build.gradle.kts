@@ -170,6 +170,12 @@ android {
             // Allow JVM unit tests to exercise code that touches android.util.Log
             // and other Android framework stubs without Robolectric.
             isReturnDefaultValues = true
+
+            // Robolectric reads the merged manifest and the packaged resources through the
+            // `com.android.tools.test_config.properties` file AGP writes only when this is on.
+            // Without it a Robolectric test cannot start at all, and the Room suites under
+            // `data/database` are the first tests here that need a real Android runtime.
+            isIncludeAndroidResources = true
         }
     }
     lint {
@@ -329,6 +335,14 @@ dependencies {
     // JVM MockK, for stubbing the DAOs the ingestor talks to. mockk-android below is the
     // instrumented build of the same library and cannot be used from src/test.
     testImplementation(libs.mockk)
+
+    // Robolectric, so a real PennyWiseDatabase can be opened from a JVM unit test. Until this
+    // landed no SQL in this repo had ever run: every DAO was verified only by Room's
+    // compile-time check, and every DAO "test" asserted against a hand-written fake, which can
+    // agree with the Kotlin signature while the SQL underneath is wrong. Robolectric brings its
+    // own android-all jar (fetched once from Maven Central) and its own SQLite, so none of this
+    // needs a device. See app/src/test/resources/robolectric.properties for the pinned API level.
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.junit)
