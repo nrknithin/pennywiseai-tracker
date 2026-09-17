@@ -79,6 +79,18 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   *Meanwhile:* everything is verified headlessly. UI work will queue up a list of things worth
   looking at on a real screen, which is faster to do in one batch anyway.
 
+- [ ] **Confirm the periodic email sync is actually scheduled**, once you next install a build:
+  ```
+  adb shell dumpsys jobscheduler | grep email_sync_periodic
+  ```
+  As of 2026-09-18 `PennyWiseApplication` enqueues `EmailSyncWorker.enqueuePeriodic` on process
+  start. This is the first change in the fork whose whole effect is a *background run*, and
+  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,823 green
+  tests proves the job exists on a real device.
+  *Meanwhile:* the runner underneath it is tested headlessly (`EmailSyncWorkerTest`, 15 tests),
+  so a scheduling problem would be the only thing this check could find.
+  *Where it goes:* nowhere in the repo — it is a one-line confirmation after a cold start.
+
 ---
 
 ## Log
@@ -87,4 +99,6 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-18 | Confirm the periodic email sync is scheduled | The pipeline was wired end to end this run, so the worker is now enqueued at process start. JVM tests cannot see a WorkManager job; only a device can |
+| 2026-09-18 | (no new blockers) | The **Gmail app password** above is now the single thing standing between the wired pipeline and a real sync — the code path behind it is complete and green. Not duplicated as a new entry |
 | 2026-09-17 | (seeded by hand) | Initial list from the spec review |

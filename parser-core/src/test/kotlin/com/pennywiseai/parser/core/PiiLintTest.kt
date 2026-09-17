@@ -151,12 +151,37 @@ class PiiLintTest {
 
         // A lint that silently scans nothing always passes. Make that impossible: if a
         // refactor moves the fork's packages, this fails loudly instead of going quiet.
-        val sanity = dynamicTest("the scan actually found source files") {
+        //
+        // One total cannot say that. It is exactly how a dead path hides behind the living
+        // ones: `data/database` alone contributes 60 files, so `files.size > 20` would stay
+        // comfortably true long after a rename emptied `domain/engine` and took three
+        // engines out of the scan. So every path is asserted on its own, and the total
+        // stays as the backstop for the case where the list itself is gutted.
+        val sanity = dynamicTest("every fork-owned path still resolves to sources") {
+            val empty = forkOwnedPaths.filter { !it.pending && filesUnder(it).isEmpty() }
+            assertTrue(
+                empty.isEmpty(),
+                "These fork-owned paths hold no Kotlin file, so this lint no longer guards what " +
+                    "they name — the package was renamed, moved or deleted. Point the path at " +
+                    "where the code went, or drop it:\n" + empty.joinToString("\n") { "  " + it.path }
+            )
+
+            // A path marked `pending` is exempt from the check above, so the flag has to come
+            // off the moment the package exists — otherwise the exemption outlives its reason
+            // and that path is the next one able to empty out unnoticed.
+            val arrived = forkOwnedPaths.filter { it.pending && filesUnder(it).isNotEmpty() }
+            assertTrue(
+                arrived.isEmpty(),
+                "These paths are marked `pending = true` but now hold sources. Drop the flag, so " +
+                    "that emptying them again fails this test:\n" +
+                    arrived.joinToString("\n") { "  " + it.path }
+            )
+
             assertTrue(
                 files.size > 20,
                 "Expected to scan the fork's sources but found only " + files.size +
                     " files under " + repoRoot().absolutePath +
-                    " — forkOwnedPrefixes is stale, so this lint is guarding nothing."
+                    " — forkOwnedPaths is stale, so this lint is guarding nothing."
             )
         }
 
@@ -332,6 +357,15 @@ class PiiLintTest {
     }
 
     /**
+     * One path this lint scans, and whether the package behind it exists yet.
+     *
+     * `pending` marks a package the spec plans but no commit has created — the cloud mirror
+     * (M3). Every other path must resolve to at least one Kotlin file, which is what turns a
+     * renamed or moved package into a red build instead of a quietly smaller scan.
+     */
+    private data class ForkPath(val path: String, val pending: Boolean = false)
+
+    /**
      * Paths the fork owns. Everything else in the tree is upstream PennyWise code, which
      * this lint deliberately does not police.
      *
@@ -343,32 +377,47 @@ class PiiLintTest {
      * has its own review for that. The rule the fork can actually keep is "we add none",
      * and that is what this enforces.
      *
-     * Add a prefix here whenever the fork starts a new package.
+     * Four of these paths are directories the fork *shares* with upstream — `data/database`,
+     * `worker`, `di` and `parser/core/test` each hold upstream files beside the fork's
+     * fifteen (the v63 entities and DAOs, `EmailSyncWorker`, `EmailModule`,
+     * `EmailParserTestUtils`). They are listed whole rather than file by file: a list of
+     * individual files goes stale the day the next entity lands, which is the failure this
+     * lint is supposed to be immune to. The upstream files caught in those four directories
+     * carry none of the shapes these rules look for — they are Room declarations and Hilt
+     * bindings, not fixtures — so including them costs nothing and the build is the ongoing
+     * check. Upstream's *parser test* tree, the one that genuinely cannot pass, stays out.
+     *
+     * Add a path here whenever the fork starts a new package.
      */
-    private val forkOwnedPrefixes = listOf(
-        "parser-core/src/main/kotlin/com/pennywiseai/parser/core/email",
-        "parser-core/src/main/kotlin/com/pennywiseai/parser/core/text",
-        "parser-core/src/test/kotlin/com/pennywiseai/parser/core/email",
-        "parser-core/src/test/kotlin/com/pennywiseai/parser/core/text",
-        "parser-core/src/test/kotlin/com/pennywiseai/parser/core/PiiLintTest.kt",
-        "app/src/main/java/com/pennywiseai/tracker/data/email",
-        "app/src/main/java/com/pennywiseai/tracker/data/backup",
-        "app/src/main/java/com/pennywiseai/tracker/domain/engine",
-        "app/src/main/java/com/pennywiseai/tracker/cloud",
-        "app/src/test/java/com/pennywiseai/tracker/data/email",
-        "app/src/test/java/com/pennywiseai/tracker/domain/engine",
-        "cloud"
+    private val forkOwnedPaths = listOf(
+        ForkPath("parser-core/src/main/kotlin/com/pennywiseai/parser/core/email"),
+        ForkPath("parser-core/src/main/kotlin/com/pennywiseai/parser/core/text"),
+        ForkPath("parser-core/src/test/kotlin/com/pennywiseai/parser/core/email"),
+        ForkPath("parser-core/src/test/kotlin/com/pennywiseai/parser/core/text"),
+        ForkPath("parser-core/src/test/kotlin/com/pennywiseai/parser/core/test"),
+        ForkPath("parser-core/src/test/kotlin/com/pennywiseai/parser/core/PiiLintTest.kt"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/data/email"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/data/database"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/data/backup"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/domain/engine"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/worker"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/di"),
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/cloud", pending = true),
+        ForkPath("app/src/test/java/com/pennywiseai/tracker/data/email"),
+        ForkPath("app/src/test/java/com/pennywiseai/tracker/domain/engine"),
+        ForkPath("cloud", pending = true)
     )
 
-    /** Kotlin sources the fork wrote. */
-    private fun sourceFiles(): List<File> {
-        val root = repoRoot()
-        return forkOwnedPrefixes
-            .map { File(root, it) }
-            .filter { it.exists() }
-            .flatMap { target ->
-                if (target.isFile) listOf(target)
-                else target.walkTopDown().filter { f -> f.isFile && f.extension == "kt" }.toList()
-            }
+    /** The Kotlin files one path contributes — none when the package is not there. */
+    private fun filesUnder(fork: ForkPath): List<File> {
+        val target = File(repoRoot(), fork.path)
+        return when {
+            !target.exists() -> emptyList()
+            target.isFile -> listOf(target)
+            else -> target.walkTopDown().filter { f -> f.isFile && f.extension == "kt" }.toList()
+        }
     }
+
+    /** Kotlin sources the fork wrote. */
+    private fun sourceFiles(): List<File> = forkOwnedPaths.flatMap { filesUnder(it) }
 }

@@ -38,6 +38,10 @@ class PennyWiseApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var scheduledFolderBackupScheduler: com.pennywiseai.tracker.backup.folder.ScheduledFolderBackupScheduler
 
+    /** Read once at start-up for the sync interval and the wifi-only constraint (spec 11 §11.2). */
+    @Inject
+    lateinit var emailAccountConfigStore: com.pennywiseai.tracker.data.email.EmailAccountConfigStore
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activityReferences = 0
     private var isInForeground = false
@@ -84,6 +88,27 @@ class PennyWiseApplication : Application(), Configuration.Provider {
         // off still creates anything that came due while it was down.
         com.pennywiseai.tracker.worker.RecurringTransactionWorker.enqueuePeriodic(this)
         com.pennywiseai.tracker.worker.RecurringTransactionWorker.enqueueOneShotCatchUp(this)
+
+        // Schedule the mail sync (spec 11 §11.3, spec 02 §2.5). KEEP, so a process start does
+        // not reset an interval already counting down; screen 47 rebuilds it with UPDATE when
+        // a setting changes. Enqueued even with no mailbox connected: step 1 of the run reads
+        // the config and returns "not configured" before opening a socket or writing a
+        // sync_runs row, and scheduling here means a mailbox connected later starts syncing
+        // without waiting for the next launch. The interval and the wifi-only constraint come
+        // from the stored settings, which is why this needs a coroutine and the line above
+        // does not.
+        applicationScope.launch {
+            try {
+                com.pennywiseai.tracker.worker.EmailSyncWorker.enqueuePeriodic(
+                    this@PennyWiseApplication,
+                    emailAccountConfigStore.current()
+                )
+            } catch (e: Exception) {
+                // A schedule that cannot be written is not worth crashing the app for: the
+                // next process start tries again, and "Sync now" still works meanwhile.
+                android.util.Log.w("PennyWiseApp", "Email sync scheduling failed: ${e.message}", e)
+            }
+        }
 
         // Keep CurrencyFormatter's number-format style in sync with the user's
         // preference. CurrencyFormatter is a stateless object used from non-Compose
