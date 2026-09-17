@@ -4,6 +4,11 @@ import androidx.room.DatabaseConfiguration
 import androidx.room.InvalidationTracker
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import com.pennywiseai.tracker.data.database.PennyWiseDatabase
+import com.pennywiseai.tracker.data.database.dao.DueDao
+import com.pennywiseai.tracker.data.database.dao.DueSourceDao
+import com.pennywiseai.tracker.data.database.dao.EmailMessageDao
+import com.pennywiseai.tracker.data.database.dao.SyncRunDao
+import com.pennywiseai.tracker.data.database.dao.TransactionSourceDao
 import com.pennywiseai.tracker.data.database.dao.*
 import com.pennywiseai.tracker.data.database.entity.TransactionEntity
 import com.pennywiseai.tracker.data.database.entity.TransactionType
@@ -65,6 +70,13 @@ class RestoreTransactionUseCaseTest {
         override fun profileDao(): ProfileDao = error("unused")
         override fun tagDao(): TagDao = error("unused")
         override fun recurringTransactionDao(): RecurringTransactionDao = error("unused")
+        // Fin (M1): the email channel's DAOs. Stubbed like every other one here — these
+        // tests exercise transaction deletion, not mail.
+        override fun emailMessageDao(): EmailMessageDao = error("unused")
+        override fun dueDao(): DueDao = error("unused")
+        override fun syncRunDao(): SyncRunDao = error("unused")
+        override fun transactionSourceDao(): TransactionSourceDao = error("unused")
+        override fun dueSourceDao(): DueSourceDao = error("unused")
         override fun createOpenHelper(config: DatabaseConfiguration): SupportSQLiteOpenHelper = error("unused")
         override fun createInvalidationTracker(): InvalidationTracker = error("unused")
         override fun clearAllTables() {}

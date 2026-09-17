@@ -35,11 +35,11 @@ Build commands (`JAVA_HOME` must point at the Temurin 21 above):
 
 | ID | Milestone | Schema | State | Gate |
 |---|---|---|---|---|
-| M0 | Toolchain + green baseline | 62 | in-progress | `:parser-core:test` green on untouched `c512c7c` |
-| M1a | Email parsers (parser-core) | — | in-progress | `./init.sh parser` green incl. the new email suites |
-| M1b | Room v63 schema | 63 | in-progress | `./init.sh app` compiles; schema 63.json exported |
-| M1c | IMAP client + body extractor + credential store | 63 | todo | Fake-IMAP worker test fetches, logs, resumes |
-| M1d | Ingest pipeline + dedup engine | 63 | todo | Spec 14 §14.1 fixture pairs each collapse to one transaction |
+| M0 | Toolchain + green baseline | 62 | **done** | `./init.sh parser` green — 2,175 tests, 0 failures |
+| M1a | Email parsers (parser-core) | — | **done** | included in the 2,175 above |
+| M1b | Room v63 schema | 63 | **done** | `./init.sh app` green |
+| M1c | IMAP client + body extractor + credential store | 63 | **done** | green: FakeMailboxClientTest 17, ImapSyncAlgorithmTest 10, ImapMessageReadTest 12, EmailBodyExtractorTest 22 |
+| M1d | Ingest pipeline + dedup engine | 63 | mostly done | green: DedupEngineTest 68, EmailTransactionIngestorTest 23, EmailSyncWorkerTest 15, PlausibleDueSettlerTest 17. Not yet wired: see Next action. |
 | M2 | Pending, commitments, settings backbone | 64 | todo | Commitments entered via UI; dues generated with no false "late" |
 | M3 | Money plan | 65 | todo | Cycle shows spendable + run-rate from entered salary |
 | M4 | Loans and EMI | 66 | todo | Schedules built; EMI debits settle schedule rows |
@@ -60,8 +60,15 @@ Build commands (`JAVA_HOME` must point at the Temurin 21 above):
 
 ## Next action
 
-Finish M0: confirm `:parser-core:test` is green on untouched `c512c7c`, then return to `fin/main`
-and run the same command against the M1 suites. Fix what the first real compile surfaces.
+M1 compiles and its tests pass, but the pipeline is not yet **connected** — a real sync would
+log mail and parse none of it. Four things, in order:
+
+1. `DueWriter` has no production implementation, so step b of spec 11 §11.4 cannot run.
+2. `EmailModule` binds `EmailBatchProcessor` to `DeferredEmailBatchProcessor`, whose
+   `process()` returns an empty list. Bind the real ingestor.
+3. No Hilt `@Provides` for `DueDao`, `DueSourceDao` or `TransactionSourceDao`, so the
+   ingestor cannot be constructed by the graph.
+4. Nothing calls `EmailSyncWorker.enqueuePeriodic`, so the worker is never scheduled.
 
 ## Verification log
 
@@ -69,7 +76,14 @@ Newest first. The workflow appends one row per run; never rewrite history here.
 
 | When | Command | Result |
 |---|---|---|
-| 2026-09-17 | `./init.sh parser` @ `fin/main` | **failed before compiling** — the Gradle wrapper could not download its own distribution. `java.io.IOException: Downloading … gradle-9.7.1-bin.zip failed: timeout (10000ms)` at ~25%. Not a code failure; nothing was compiled. |
+| 2026-09-17 | `./init.sh app` @ `fin/main` | **GREEN** — 573 app unit tests, 0 failures, including every M1 suite |
+| 2026-09-17 | `./init.sh app` | failed: three upstream `TestDb` classes needed the five new DAO stubs |
+| 2026-09-17 | `./init.sh parser` @ `fin/main` | **GREEN** — 2,175 tests, 0 failures. First fully verified state. |
+| 2026-09-17 | `./init.sh parser` | 2,175 tests, 2 failed — both the catalogue doc tests, caused by the CRLF working tree (fixed by `.gitattributes` + renormalisation) |
+| 2026-09-17 | `:parser-core:jvmTest --tests *DocTest*` @ pristine `c512c7c` worktree | both **passed** — which proved the two failures were mine, not inherited |
+| 2026-09-17 | `./init.sh parser` | 2,175 tests, 4 failed — 2 lint false positives, 2 doc tests |
+| 2026-09-17 | `./init.sh parser` | 2,175 tests, 7 failed — **everything compiled on the first real build**; 3 genuine bugs (DateParse long-month pattern, 2 half-scrubbed MoneyTest expectations), 2 lint false positives, 2 doc tests |
+| 2026-09-17 | `./init.sh parser` @ `fin/main` | failed before compiling — the Gradle wrapper could not download its own distribution (`timeout (10000ms)` at ~25%). Not a code failure. |
 | 2026-09-17 | `:parser-core:test` @ `c512c7c` | abandoned — same download, cancelled to free the link |
 
 ## Known environment constraint
