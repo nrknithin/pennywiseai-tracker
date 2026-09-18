@@ -295,9 +295,14 @@ Files it should touch: ${task.files}
 Governing spec: ${task.spec || 'see BUILD-STATUS.md for the current milestone'}
 Your gate: \`${task.gate}\`
 
-Do the work, then RUN THE GATE and report what it actually printed. A task whose gate you did
-not run is reported as gateResult "could-not-run" — that is an acceptable answer, and far better
-than claiming a pass you did not see.
+${task.parallelSafe ? `**Do NOT run Gradle.** You are running alongside other agents in this same working tree, and
+Gradle keeps one incremental state per build directory: two builds at once corrupt it, producing
+impossible results like a missing PennyWiseDatabase_Impl.class while the compile task reports
+UP-TO-DATE. Report gateResult "could-not-run" — the Verify phase runs the gate once, serially,
+and its result is the authoritative one. A wrong green here is worse than no green.` :
+`Do the work, then RUN THE GATE and report what it actually printed. You are running serially, so
+the build directory is yours. A task whose gate you did not run is reported as gateResult
+"could-not-run" — an acceptable answer, and far better than claiming a pass you did not see.`}
 
 Write the tests in the same pass as the code, not after. If you find the spec contradicts itself
 here, implement the reading that loses no data, comment why at the site, and add a row to
