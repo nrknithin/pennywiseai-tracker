@@ -87,7 +87,11 @@ android {
             // Owner's choice (2026-09-18). Spec 05 §5.2 wrote `in.nrk.fin`; recorded in
             // docs/FORK-CHANGES.md. Package names *in code* stay com.pennywiseai.tracker so the
             // upstream diff stays small — only the installed identity changes.
-            applicationId = "com.nrknithin.fin"
+            //
+            // This is the identity Android installs under, and it is effectively permanent: a
+            // later change is a different app, so the old one has to be uninstalled and its data
+            // is lost. It also has to match the package registered in Firebase exactly.
+            applicationId = "com.nrknithin.fintrack"
             // Every Pro gate resolves to entitled, exactly as on fdroid (spec 02 §2.9).
             buildConfigField("boolean", "IS_FDROID_BUILD", "true")
             // Spec 08's cloud code compiles only here; the fdroid flavor stays the control

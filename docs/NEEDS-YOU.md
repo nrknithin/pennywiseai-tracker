@@ -47,15 +47,9 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
     owner-only rules, which will break anything still using `byt-play`.
   *Still needed from the owner:* the four values (`projectId` = `byt-play`, `appId`, `apiKey`,
   `senderId`) into git-ignored `local.properties`, and the Android app registered in the console
-  under package **`com.nrknithin.fin`** with the debug and release SHA-1s.
+  under package **`com.nrknithin.fintrack`** with the debug and release SHA-1s.
   *Note:* the Firebase CLI is **not** installed on this machine — npm's global root is empty and
   `firebase` is not on PATH, despite the owner believing otherwise. Nothing depends on it yet.
-
-- [ ] **Firebase project (original entry, superseded by the one above)**
-  Four values — `projectId`, `appId`, `apiKey`, `senderId` — into git-ignored `local.properties`,
-  plus `google-services.json` kept beside the keystore.
-  *Meanwhile:* M8 is skipped entirely. Spec constraint C8 says the app is complete with every
-  cloud feature off, and the `fdroid` flavor is the control build that proves it.
 
 - [ ] **Cloudflare account + `wrangler` login** (only for M8, the scheduled bell).
   *Meanwhile:* same as above — skipped.

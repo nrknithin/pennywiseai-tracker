@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Overrides the label from main. TRADEMARKS.md forbids shipping the upstream
-         name or logo, so the personal build must not call itself PennyWise. -->
-    <string name="app_name">Fin</string>
+    <!-- Overrides the label from main. TRADEMARKS.md forbids shipping the upstream name or
+         logo, so the personal build must not call itself PennyWise.
+
+         The spec calls the product "Fin" throughout (spec 00, spec 01). The shipped name is
+         FinTrack, chosen by the owner on 2026-09-18. The spec is not edited to match — it is
+         the owner's input, not this build's output — so expect that mismatch when reading it. -->
+    <string name="app_name">FinTrack</string>
 </resources>
