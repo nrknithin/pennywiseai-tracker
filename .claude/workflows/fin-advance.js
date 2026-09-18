@@ -247,6 +247,14 @@ Rules for choosing:
     tasks. Never make the build wait on the owner.
   - Two tasks may only be parallelSafe together if they touch genuinely disjoint files. When in
     doubt, mark false — a merge conflict costs more than the parallelism saves.
+  - **Name every shared file in exactly one task's \`files\`, including ones that do not exist
+    yet.** Disjoint briefs are not enough. On 2026-09-18 a run scoped three genuinely disjoint
+    jobs — IMAP client, discovery engine, storage — and two of its agents still collided, because
+    both needed a helper that appeared in no brief: it was invented between scoping and
+    execution, so the disjointness test could not see it and correctly returned true. If a task
+    needs a type another task will also need, either give it to one task outright or make it a
+    task of its own that runs BEFORE the parallel group. A file owned by nobody is owned by
+    whoever writes last.
   - Between one and four tasks. Prefer fewer and finished over more and half-done.`,
   { label: 'decide:next', phase: 'Decide', schema: PLAN_SCHEMA, effort: 'high' }
 )
@@ -296,7 +304,14 @@ here, implement the reading that loses no data, comment why at the site, and add
 docs/FORK-CHANGES.md.
 
 Stay inside the files listed above. Another agent may be working elsewhere in this repo at the
-same time; do not reformat, refactor or "tidy" anything outside your task.`
+same time; do not reformat, refactor or "tidy" anything outside your task.
+
+**If you need a file that is not in your list, do not create it.** Say so in \`unfinished\` and
+work around it, or stop short. A sibling agent may be creating the same helper right now under a
+different name, and whichever of you writes last silently destroys the other's work — these files
+are usually untracked, so there is no version to restore. This is not hypothetical: it happened
+on 2026-09-18, and the agent that overwrote the file believed it was resolving a conflict with a
+different *session*, because a sibling's output is indistinguishable from a stranger's.`
 
 const parallelSafe = plan.tasks.filter(t => t.parallelSafe)
 const serial = plan.tasks.filter(t => !t.parallelSafe)
