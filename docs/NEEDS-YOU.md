@@ -43,6 +43,21 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
 
 ---
 
+
+- [ ] **Google Drive backup — owner said on 2026-09-18 it is not wanted.** Recorded rather than
+  acted on, because the premise needs checking first: M8 (Firebase) is `todo`, not built, and was
+  explicitly excluded from the autonomous work, so there is no cloud copy today. Spec 00 §0.2 also
+  fixes that Firestore would hold *ciphertext blobs, never queryable data* — a restore source, not
+  a sync. And spec 02 §2.4 makes the snapshot **the backup file**: `ScheduledFolderBackupWorker ->
+  backup bytes -> CloudSnapshotWorker -> Firestore`, so deleting M6 removes what M8 uploads.
+  *Split that survives the confusion:* keep `BackupExporter`/`BackupCrypto` (M8 needs the payload),
+  drop the SAF folder-picker screen (genuinely optional). That is the default if nothing else is
+  said — it costs one screen and keeps a recovery path that needs no account and no network, which
+  constraint C8 requires.
+  *Still open:* whether this means M8 should now be built (puts Firebase back in scope and needs
+  the four config values), and the encryption-model question above stops being academic if
+  Firestore ever becomes the only copy — losing the vault passphrase would then lose everything.
+
 ## Decisions only you can make
 
 - [ ] **Backup encryption model.** The spec describes two incompatible schemes for the same
