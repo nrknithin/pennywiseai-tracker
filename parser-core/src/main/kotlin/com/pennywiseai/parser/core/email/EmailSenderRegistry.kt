@@ -93,7 +93,13 @@ object EmailSenderRegistry {
         "auto-confirm@amazon.in" to SenderMapping("Amazon.in"),
         "noreply@updates.tatacliq.com" to SenderMapping("Tata CLiQ"),
         "ss@jiomart.com" to SenderMapping("JioMart"),
-        "order-update@amazon.in" to SenderMapping("Amazon.in", marketingOnly = true),
+        // Spec 12 §12.10 seeds this as marketing, but spec 24 §24.2 names it a receipt source
+        // and R-24-01 needs its Ordered -> Shipped -> Delivered progression. 73 messages in the
+        // real mailbox. Receipts win: the marketing flag would have cost the status history for
+        // every Amazon order.
+        "order-update@amazon.in" to SenderMapping("Amazon.in"),
+        // Refunds (spec 24 §24.2). Was absent from the registry entirely.
+        "return@amazon.in" to SenderMapping("Amazon.in"),
         "shipment-tracking@amazon.in" to SenderMapping("Amazon.in", marketingOnly = true),
         "marketplace-messages@amazon.in" to SenderMapping("Amazon.in", marketingOnly = true),
         "store-news@amazon.in" to SenderMapping("Amazon.in", marketingOnly = true),
@@ -131,7 +137,20 @@ object EmailSenderRegistry {
         "policybazaar.com" to SenderMapping("PolicyBazaar"),
         "godigit.com" to SenderMapping("Digit Insurance"),
         "updates.tatacliq.com" to SenderMapping("Tata CLiQ"),
-        "jiomart.com" to SenderMapping("JioMart")
+        "jiomart.com" to SenderMapping("JioMart"),
+
+        // Found by querying the mailbox's own Gmail `category:purchases` on 2026-09-18: 220 of
+        // 687 purchase emails in a year — 32% — came from senders spec 10 never listed, because
+        // that corpus was a point-in-time snapshot. A hand-maintained registry goes stale the
+        // moment the owner shops somewhere new, which is why sender discovery is being built
+        // rather than this list being extended by hand forever.
+        // Trailing counts are messages seen in 365 days.
+        "irctc.co.in" to SenderMapping("IRCTC"),          // 128
+        "bigbasket.com" to SenderMapping("BigBasket"),    // 41
+        "swiggy.in" to SenderMapping("Swiggy"),           // 25
+        "1mg.com" to SenderMapping("Tata 1mg"),           // 13
+        "decathlon.in" to SenderMapping("Decathlon"),     // 11
+        "blinkit.com" to SenderMapping("Blinkit")         // 1
     )
 
     /**
