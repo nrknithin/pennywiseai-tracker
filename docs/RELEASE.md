@@ -60,7 +60,7 @@ changes so you're left in a clean state.
 | `--dry-run` | Print the plan + release notes and change nothing. Run this first. |
 | `--no-claude` | Skip Claude note generation; use the commit-list fallback. |
 | `--play` | After building, also build the `.aab` and upload it to Play Console as a draft (via `scripts/upload-play.sh`). |
-| `--web` | Also deploy `pennywise-web` to Cloudflare (otherwise a routine app release never redeploys the site). |
+| `--web` | Also deploy `fintrack-web` to Cloudflare (otherwise a routine app release never redeploys the site). |
 
 One-shot headless release with a Play draft:
 
@@ -75,8 +75,8 @@ One-shot headless release with a Play draft:
   workflow shows an unsigned APK, the signing config/secrets are misconfigured.
 - **`--play`** additionally needs the Play Console service-account credentials
   that `scripts/upload-play.sh` expects.
-- **`--web`** needs the `pennywise-web` deploy toolchain (`bun`, Cloudflare
-  auth); the script runs `pennywise-web/scripts/deploy.sh`.
+- **`--web`** needs the `fintrack-web` deploy toolchain (`bun`, Cloudflare
+  auth); the script runs `fintrack-web/scripts/deploy.sh`.
 
 ## Conventional commits
 

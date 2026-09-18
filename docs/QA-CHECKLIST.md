@@ -22,7 +22,7 @@ socket, a real 180-day mailbox, a process kill, and an R8-minified build.
 | P1 | A **release** build installed (`./gradlew :app:assembleStandardRelease`) | AC-11-04 is meaningless on a debug build — see the warning in §AC-11-04 |
 | P2 | A mailbox connected in the app | **Not possible yet.** Screen 47 (Email Settings) is not built; `EmailSyncRunner.run()` returns `NotConfigured` on every run. See docs/NEEDS-YOU.md, "How a mailbox gets connected". Everything in this file is blocked on P2 and that is expected — the checklist exists so the run is watched properly when it can happen |
 | P3 | `adb` on PATH, phone in developer mode, USB debugging on | `adb devices` lists the phone |
-| P4 | A way to read the database | Android Studio's App Inspection → Database Inspector, on the release build's `com.pennywiseai.tracker` process |
+| P4 | A way to read the database | Android Studio's App Inspection → Database Inspector, on the release build's `com.nrknithin.fintrack` process |
 | P5 | The phone's SMS history covers the same window as the mailbox | AC-13-01 and AC-13-03 need an SMS and its email twin to both exist |
 
 The SQL below is written against schema v63 and can be pasted into the Database Inspector.
@@ -73,7 +73,7 @@ Note the counters here as a shape, not as figures to copy anywhere: ____________
 
 1. Start a first sync on a fresh install (the 180-day one is long enough to interrupt).
 2. While the foreground notification still shows progress, force-stop the app:
-   `adb shell am force-stop com.pennywiseai.tracker`.
+   `adb shell am force-stop com.nrknithin.fintrack`.
 3. Reopen the app and let the sync finish.
 4. Look for holes in the UID sequence:
    ```sql
@@ -127,7 +127,7 @@ JVM gate cannot see them.**
 ```sh
 adb logcat -c
 # trigger the sync, wait for the foreground notification to finish
-adb logcat -d --pid=$(adb shell pidof -s com.pennywiseai.tracker) > /tmp/fin-sync.log
+adb logcat -d --pid=$(adb shell pidof -s com.nrknithin.fintrack) > /tmp/fin-sync.log
 ```
 
 `--pid` matters: an unfiltered logcat is full of other apps' lines and will produce hits that
@@ -145,7 +145,7 @@ have nothing to do with Fin.
 
 ### If G1 or G2 hits something real
 
-The redactor is `app/src/main/java/com/pennywiseai/tracker/util/LogRedactor.kt` and its unit
+The redactor is `app/src/main/java/com/nrknithin/fintrack/util/LogRedactor.kt` and its unit
 tests are `LogRedactorTest`. A hit means one of three things, in rough order of likelihood:
 
 1. **A call site that does not use Timber.** The inherited SMS path logs through

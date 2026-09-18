@@ -1,1 +1,1 @@
-PennyWise: SMS Expense Tracker
+FinTrack: SMS Expense Tracker

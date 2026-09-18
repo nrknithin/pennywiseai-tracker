@@ -179,7 +179,7 @@ jobs:
           else
             echo "## Initial Release" >> RELEASE_NOTES.md
             echo "" >> RELEASE_NOTES.md
-            echo "First release of PennyWise" >> RELEASE_NOTES.md
+            echo "First release of FinTrack" >> RELEASE_NOTES.md
           fi
           
           echo "" >> RELEASE_NOTES.md
@@ -241,27 +241,27 @@ jobs:
           # Rename universal APK (contains all architectures)
           if [ -f "$STANDARD_PATH/app-standard-universal-release.apk" ]; then
             mv "$STANDARD_PATH/app-standard-universal-release.apk" \
-               "$STANDARD_PATH/PennyWise-v${VERSION}-universal.apk"
+               "$STANDARD_PATH/FinTrack-v${VERSION}-universal.apk"
           elif [ -f "$STANDARD_PATH/app-standard-universal-release-unsigned.apk" ]; then
             mv "$STANDARD_PATH/app-standard-universal-release-unsigned.apk" \
-               "$STANDARD_PATH/PennyWise-v${VERSION}-universal.apk"
+               "$STANDARD_PATH/FinTrack-v${VERSION}-universal.apk"
           fi
           
           # Rename architecture-specific APKs
           for arch in armeabi-v7a arm64-v8a x86 x86_64; do
             if [ -f "$STANDARD_PATH/app-standard-${arch}-release.apk" ]; then
               mv "$STANDARD_PATH/app-standard-${arch}-release.apk" \
-                 "$STANDARD_PATH/PennyWise-v${VERSION}-${arch}.apk"
+                 "$STANDARD_PATH/FinTrack-v${VERSION}-${arch}.apk"
             elif [ -f "$STANDARD_PATH/app-standard-${arch}-release-unsigned.apk" ]; then
               mv "$STANDARD_PATH/app-standard-${arch}-release-unsigned.apk" \
-                 "$STANDARD_PATH/PennyWise-v${VERSION}-${arch}.apk"
+                 "$STANDARD_PATH/FinTrack-v${VERSION}-${arch}.apk"
             fi
           done
           
           # Rename F-Droid APK
           if [ -f "$FDROID_PATH/app-fdroid-release-unsigned.apk" ]; then
             mv "$FDROID_PATH/app-fdroid-release-unsigned.apk" \
-               "$FDROID_PATH/PennyWise-fdroid-v${VERSION}.apk"
+               "$FDROID_PATH/FinTrack-fdroid-v${VERSION}.apk"
           fi
           
           echo "Standard APKs:"
@@ -276,7 +276,7 @@ jobs:
           
           # SHA256 for all standard APKs
           cd app/build/outputs/apk/standard/release/
-          for apk in PennyWise-v${VERSION}*.apk; do
+          for apk in FinTrack-v${VERSION}*.apk; do
             if [ -f "$apk" ]; then
               sha256sum "$apk" > "${apk}.sha256"
               echo "SHA256 for $apk:"
@@ -286,10 +286,10 @@ jobs:
           
           # SHA256 for F-Droid APK
           cd ../../fdroid/release/
-          if [ -f "PennyWise-fdroid-v${VERSION}.apk" ]; then
-            sha256sum "PennyWise-fdroid-v${VERSION}.apk" > "PennyWise-fdroid-v${VERSION}.apk.sha256"
+          if [ -f "FinTrack-fdroid-v${VERSION}.apk" ]; then
+            sha256sum "FinTrack-fdroid-v${VERSION}.apk" > "FinTrack-fdroid-v${VERSION}.apk.sha256"
             echo "F-Droid APK SHA256:"
-            cat "PennyWise-fdroid-v${VERSION}.apk.sha256"
+            cat "FinTrack-fdroid-v${VERSION}.apk.sha256"
           fi
       
       - name: Commit version bump and push
@@ -323,14 +323,14 @@ jobs:
           name: Release v${{ steps.next_version.outputs.version }}
           body_path: RELEASE_NOTES.md
           files: |
-            app/build/outputs/apk/standard/release/PennyWise-v${{ steps.next_version.outputs.version }}-universal.apk
-            app/build/outputs/apk/standard/release/PennyWise-v${{ steps.next_version.outputs.version }}-universal.apk.sha256
-            app/build/outputs/apk/standard/release/PennyWise-v${{ steps.next_version.outputs.version }}-arm64-v8a.apk
-            app/build/outputs/apk/standard/release/PennyWise-v${{ steps.next_version.outputs.version }}-arm64-v8a.apk.sha256
-            app/build/outputs/apk/standard/release/PennyWise-v${{ steps.next_version.outputs.version }}-armeabi-v7a.apk
-            app/build/outputs/apk/standard/release/PennyWise-v${{ steps.next_version.outputs.version }}-armeabi-v7a.apk.sha256
-            app/build/outputs/apk/fdroid/release/PennyWise-fdroid-v${{ steps.next_version.outputs.version }}.apk
-            app/build/outputs/apk/fdroid/release/PennyWise-fdroid-v${{ steps.next_version.outputs.version }}.apk.sha256
+            app/build/outputs/apk/standard/release/FinTrack-v${{ steps.next_version.outputs.version }}-universal.apk
+            app/build/outputs/apk/standard/release/FinTrack-v${{ steps.next_version.outputs.version }}-universal.apk.sha256
+            app/build/outputs/apk/standard/release/FinTrack-v${{ steps.next_version.outputs.version }}-arm64-v8a.apk
+            app/build/outputs/apk/standard/release/FinTrack-v${{ steps.next_version.outputs.version }}-arm64-v8a.apk.sha256
+            app/build/outputs/apk/standard/release/FinTrack-v${{ steps.next_version.outputs.version }}-armeabi-v7a.apk
+            app/build/outputs/apk/standard/release/FinTrack-v${{ steps.next_version.outputs.version }}-armeabi-v7a.apk.sha256
+            app/build/outputs/apk/fdroid/release/FinTrack-fdroid-v${{ steps.next_version.outputs.version }}.apk
+            app/build/outputs/apk/fdroid/release/FinTrack-fdroid-v${{ steps.next_version.outputs.version }}.apk.sha256
           draft: false
           prerelease: false
       
@@ -364,16 +364,16 @@ jobs:
           # Rename AAB file
           AAB_PATH="app/build/outputs/bundle/standardRelease"
           mv "$AAB_PATH/app-standard-release.aab" \
-             "$AAB_PATH/PennyWise-v${{ steps.next_version.outputs.version }}.aab"
-          echo "App Bundle created: $AAB_PATH/PennyWise-v${{ steps.next_version.outputs.version }}.aab"
+             "$AAB_PATH/FinTrack-v${{ steps.next_version.outputs.version }}.aab"
+          echo "App Bundle created: $AAB_PATH/FinTrack-v${{ steps.next_version.outputs.version }}.aab"
       
       - name: Upload to Play Store
         if: ${{ !inputs.dry_run && inputs.upload_to_play_store }}
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
-          packageName: com.pennywiseai.tracker
-          releaseFiles: app/build/outputs/bundle/standardRelease/PennyWise-v${{ steps.next_version.outputs.version }}.aab
+          packageName: com.nrknithin.fintrack
+          releaseFiles: app/build/outputs/bundle/standardRelease/FinTrack-v${{ steps.next_version.outputs.version }}.aab
           track: ${{ inputs.play_store_track }}
           status: ${{ inputs.play_store_status }}
           releaseName: v${{ steps.next_version.outputs.version }}

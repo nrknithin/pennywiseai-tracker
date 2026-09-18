@@ -1,5 +1,5 @@
-import com.pennywiseai.parser.core.TransactionType
-import com.pennywiseai.parser.core.bank.BankParserFactory
+import com.nrknithin.fintrack.parser.core.TransactionType
+import com.nrknithin.fintrack.parser.core.bank.BankParserFactory
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 

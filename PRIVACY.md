@@ -4,7 +4,7 @@
 
 ## Our Commitment to Privacy
 
-PennyWise AI is built with privacy as the core principle. We believe your financial data should remain yours alone.
+FinTrack AI is built with privacy as the core principle. We believe your financial data should remain yours alone.
 
 ## On-Device Processing
 
@@ -26,7 +26,7 @@ PennyWise AI is built with privacy as the core principle. We believe your financ
 ### Where It's Stored
 - All data is stored in a local SQLite database on your device
 - Database is protected by Android's app sandboxing
-- Data is only accessible to PennyWise AI app
+- Data is only accessible to FinTrack AI app
 
 ### Data Deletion
 - Uninstalling the app completely removes all data
@@ -48,13 +48,13 @@ PennyWise AI is built with privacy as the core principle. We believe your financ
 - Optional app lock via fingerprint or face unlock
 
 ### Contacts (`READ_CONTACTS`, off by default)
-- PennyWise ships this permission for one opt-in feature: contact lookup, which can resolve a UPI VPA like `merchant@ybl` into a name from your address book so merchant lists read naturally
+- FinTrack ships this permission for one opt-in feature: contact lookup, which can resolve a UPI VPA like `merchant@ybl` into a name from your address book so merchant lists read naturally
 - The lookup runs on-device and the feature stays dormant until you enable it in Settings
 
 ### Internet Permission
 - **Model Download**: One-time download of the ~1.5GB Qwen 2.5 model from a public Cloudflare R2 bucket, verified against a SHA-256 checksum before use
 - **Exchange Rates**: Multi-currency features fetch current rates from open.er-api.com; only the currency code is sent
-- **Parse Reports**: The "report a parsing problem" action opens pennywise.zynth.dev with the SMS text and sender ID pre-filled. The link also carries an encrypted device identifier — your Android device ID plus a timestamp, RSA-encrypted on-device before it leaves. Opening the page sends these details to the server right away to generate a parsed preview; submitting the report itself remains a separate user action
+- **Parse Reports**: The "report a parsing problem" action opens fintrack.zynth.dev with the SMS text and sender ID pre-filled. The link also carries an encrypted device identifier — your Android device ID plus a timestamp, RSA-encrypted on-device before it leaves. Opening the page sends these details to the server right away to generate a parsed preview; submitting the report itself remains a separate user action
 - **App Updates**: Google Play Store variant uses Play Services for app updates (F-Droid variant does not)
 - **After Model Download**: AI works completely offline, no internet required for core features
 
@@ -62,7 +62,7 @@ No location, camera, or microphone permission is requested.
 
 ## Third-Party Services
 
-PennyWise AI does **NOT** use:
+FinTrack AI does **NOT** use:
 - ❌ Cloud storage, backup, or sync of your transaction data
 - ❌ Analytics services (Google Analytics, Firebase, etc.)
 - ❌ Crash reporting services
@@ -91,14 +91,14 @@ When you export your data:
 
 ## Open Source Transparency
 
-PennyWise AI is fully open source:
+FinTrack AI is fully open source:
 - Review our code at [GitHub](https://github.com/sarim2000/pennywiseai-tracker)
 - Verify our privacy claims yourself
 - Contribute to make it even better
 
 ## Children's Privacy
 
-PennyWise AI is not directed at children under 13. We do not knowingly collect information from children.
+FinTrack AI is not directed at children under 13. We do not knowingly collect information from children.
 
 ## Changes to Privacy Policy
 
@@ -115,8 +115,8 @@ For privacy concerns or questions:
 
 ## Summary
 
-**Your financial data lives on your phone.** Transactions, balances, budgets, and chat history all sit in a local database inside the app sandbox, and uninstalling removes everything. PennyWise has no analytics or cloud-sync backend; the outbound requests listed under Internet Permission are the complete list.
+**Your financial data lives on your phone.** Transactions, balances, budgets, and chat history all sit in a local database inside the app sandbox, and uninstalling removes everything. FinTrack has no analytics or cloud-sync backend; the outbound requests listed under Internet Permission are the complete list.
 
 ---
 
-*PennyWise AI - Privacy-first expense tracking with on-device AI*
+*FinTrack AI - Privacy-first expense tracking with on-device AI*

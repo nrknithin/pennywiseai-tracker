@@ -1,6 +1,6 @@
-# Contributing to PennyWise AI
+# Contributing to FinTrack AI
 
-Thank you for your interest in contributing to PennyWise AI! We welcome contributions from the community.
+Thank you for your interest in contributing to FinTrack AI! We welcome contributions from the community.
 
 ## How to Contribute
 
@@ -25,7 +25,7 @@ Thank you for your interest in contributing to PennyWise AI! We welcome contribu
 
 To add support for a new bank:
 
-1. Create a new parser class in `parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/`
+1. Create a new parser class in `parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/`
 2. Extend the right base class: `BaseIndianBankParser` for Indian banks, `UAEBankParser` for UAE banks, `BaseIranianBankParser` / `BaseThailandBankParser` for those markets, plain `BankParser` otherwise
 3. Implement the required methods (`parse()` has a default implementation you only override when the bank needs custom parsing):
    ```kotlin
@@ -78,7 +78,7 @@ Full walkthrough: [docs/adding-bank-parsers.md](docs/adding-bank-parsers.md)
 ```bash
 # Clone the repo
 git clone https://github.com/sarim2000/pennywiseai-tracker.git
-cd pennywiseai-tracker
+cd fintrack-tracker
 
 # Build debug APK
 ./gradlew assembleDebug
@@ -92,11 +92,11 @@ cd pennywiseai-tracker
 
 ### Project Structure
 
-PennyWise is a multi-module project (`settings.gradle.kts` includes `:app`, `:parser-core`, `:shared`, and `:iosApp`; the tree below also shows non-module directories):
+FinTrack is a multi-module project (`settings.gradle.kts` includes `:app`, `:parser-core`, `:shared`, and `:iosApp`; the tree below also shows non-module directories):
 
 ```
 app/                  # Android app (Compose UI, Room, Hilt)
-└── src/main/java/com/pennywiseai/tracker/
+└── src/main/java/com/nrknithin/fintrack/
     ├── data/             # Database, repositories, managers
     ├── domain/           # Use cases and services
     ├── presentation/     # Feature screens + ViewModels
@@ -107,7 +107,7 @@ app/                  # Android app (Compose UI, Room, Hilt)
 parser-core/          # Kotlin Multiplatform bank parsers (shared with iOS)
 shared/               # Shared Kotlin code for the iOS app
 iosApp/               # Swift iOS app
-pennywise-web/        # Web deployment (Cloudflare Worker + Ktor server)
+fintrack-web/        # Web deployment (Cloudflare Worker + Ktor server)
 ```
 
 ## Testing
@@ -141,4 +141,4 @@ Feel free to:
 - Ask in our [Discord](https://discord.gg/H3xWeMWjKQ)
 - Reach out to maintainers
 
-Thank you for helping make PennyWise AI better! 🚀
+Thank you for helping make FinTrack AI better! 🚀

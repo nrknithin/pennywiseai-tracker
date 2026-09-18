@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug or issue with PennyWise
+about: Report a bug or issue with FinTrack
 title: '[BUG] '
 labels: bug
 assignees: 'sarim2000'

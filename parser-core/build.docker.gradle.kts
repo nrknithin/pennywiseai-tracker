@@ -3,7 +3,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.pennywiseai"
+group = "com.nrknithin"
 version = "0.1.0-SNAPSHOT"
 
 repositories {

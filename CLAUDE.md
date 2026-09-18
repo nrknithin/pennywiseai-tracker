@@ -1,9 +1,9 @@
-# PennyWise — Agent Guide
+# FinTrack — Agent Guide
 
-PennyWise is a privacy-first, AI-powered expense tracker that extracts
+FinTrack is a privacy-first, AI-powered expense tracker that extracts
 transactions from bank SMS **entirely on-device**. The primary app is Android
 (Jetpack Compose + Material 3); the repo also contains a Kotlin Multiplatform
-`shared` module, an `iosApp`, and a `pennywise-web` frontend.
+`shared` module, an `iosApp`, and a `fintrack-web` frontend.
 
 **This file is a router, not a manual.** Read the linked topic doc when a task
 touches its area. Everything under **Hard Constraints** is non-negotiable.
@@ -66,10 +66,10 @@ part of the gate — don't use them to verify.
   StateFlow (unidirectional data flow) · Hilt DI · Room · WorkManager (background
   SMS scanning) · Google AI Edge LiteRT-LM (Qwen 2.5) for on-device AI.
 - **Modules:** `app` (Android) · `parser-core` (pure-Kotlin bank SMS parsers, no
-  Android deps) · `shared` (KMP) · `iosApp` · `pennywise-web`.
+  Android deps) · `shared` (KMP) · `iosApp` · `fintrack-web`.
 - **UI:** Material You dynamic color (Android 12+), full light/dark with semantic
   color roles, 8dp grid, Material 3 type scale. All screens use
-  `PennyWiseScaffold` for consistent system-bar / TopAppBar handling. Always
+  `FinTrackScaffold` for consistent system-bar / TopAppBar handling. Always
   check both light and dark themes.
 - **Versioning:** SemVer (MAJOR breaking / MINOR features / PATCH fixes). The
   live version is in `app/build.gradle.kts`.

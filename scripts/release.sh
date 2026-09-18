@@ -210,7 +210,7 @@ if [ "$USE_CLAUDE" = false ]; then
     else
         echo "## Initial Release" >> RELEASE_NOTES.md
         echo "" >> RELEASE_NOTES.md
-        echo "First release of PennyWise" >> RELEASE_NOTES.md
+        echo "First release of FinTrack" >> RELEASE_NOTES.md
     fi
 
     echo "" >> RELEASE_NOTES.md
@@ -354,21 +354,21 @@ FDROID_PATH="app/build/outputs/apk/fdroid/release"
 # Rename universal APK
 if [ -f "$STANDARD_PATH/app-standard-universal-release.apk" ]; then
     mv "$STANDARD_PATH/app-standard-universal-release.apk" \
-       "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-universal.apk"
+       "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-universal.apk"
 fi
 
 # Rename architecture-specific APKs
 for arch in armeabi-v7a arm64-v8a x86 x86_64; do
     if [ -f "$STANDARD_PATH/app-standard-${arch}-release.apk" ]; then
         mv "$STANDARD_PATH/app-standard-${arch}-release.apk" \
-           "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-${arch}.apk"
+           "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-${arch}.apk"
     fi
 done
 
 # Rename F-Droid APK
 if [ -f "$FDROID_PATH/app-fdroid-release-unsigned.apk" ]; then
     mv "$FDROID_PATH/app-fdroid-release-unsigned.apk" \
-       "$FDROID_PATH/PennyWise-fdroid-v${NEXT_VERSION}.apk"
+       "$FDROID_PATH/FinTrack-fdroid-v${NEXT_VERSION}.apk"
 fi
 
 echo -e "${GREEN}✅ APKs renamed${NC}"
@@ -376,15 +376,15 @@ echo -e "${GREEN}✅ APKs renamed${NC}"
 # 8. Calculate SHA256
 ORIGINAL_DIR="$PWD"
 cd "$STANDARD_PATH"
-for apk in PennyWise-v${NEXT_VERSION}*.apk; do
+for apk in FinTrack-v${NEXT_VERSION}*.apk; do
     if [ -f "$apk" ]; then
         sha256sum "$apk" > "${apk}.sha256"
     fi
 done
 
 cd "$ORIGINAL_DIR/$FDROID_PATH"
-if [ -f "PennyWise-fdroid-v${NEXT_VERSION}.apk" ]; then
-    sha256sum "PennyWise-fdroid-v${NEXT_VERSION}.apk" > "PennyWise-fdroid-v${NEXT_VERSION}.apk.sha256"
+if [ -f "FinTrack-fdroid-v${NEXT_VERSION}.apk" ]; then
+    sha256sum "FinTrack-fdroid-v${NEXT_VERSION}.apk" > "FinTrack-fdroid-v${NEXT_VERSION}.apk.sha256"
 fi
 cd "$ORIGINAL_DIR"
 
@@ -430,14 +430,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         gh release create "v$NEXT_VERSION" \
             --title "Release v$NEXT_VERSION" \
             --notes-file RELEASE_NOTES.md \
-            "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-universal.apk" \
-            "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-universal.apk.sha256" \
-            "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-arm64-v8a.apk" \
-            "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-arm64-v8a.apk.sha256" \
-            "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-armeabi-v7a.apk" \
-            "$STANDARD_PATH/PennyWise-v${NEXT_VERSION}-armeabi-v7a.apk.sha256" \
-            "$FDROID_PATH/PennyWise-fdroid-v${NEXT_VERSION}.apk" \
-            "$FDROID_PATH/PennyWise-fdroid-v${NEXT_VERSION}.apk.sha256"
+            "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-universal.apk" \
+            "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-universal.apk.sha256" \
+            "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-arm64-v8a.apk" \
+            "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-arm64-v8a.apk.sha256" \
+            "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-armeabi-v7a.apk" \
+            "$STANDARD_PATH/FinTrack-v${NEXT_VERSION}-armeabi-v7a.apk.sha256" \
+            "$FDROID_PATH/FinTrack-fdroid-v${NEXT_VERSION}.apk" \
+            "$FDROID_PATH/FinTrack-fdroid-v${NEXT_VERSION}.apk.sha256"
         echo -e "${GREEN}✅ GitHub release created${NC}"
     else
         echo -e "${YELLOW}gh CLI not found. Create release manually at:${NC}"
@@ -462,11 +462,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     AAB_PATH="app/build/outputs/bundle/standardRelease"
     if [ -f "$AAB_PATH/app-standard-release.aab" ]; then
         mv "$AAB_PATH/app-standard-release.aab" \
-           "$AAB_PATH/PennyWise-v${NEXT_VERSION}.aab"
-        echo -e "${GREEN}✅ App Bundle created: $AAB_PATH/PennyWise-v${NEXT_VERSION}.aab${NC}"
+           "$AAB_PATH/FinTrack-v${NEXT_VERSION}.aab"
+        echo -e "${GREEN}✅ App Bundle created: $AAB_PATH/FinTrack-v${NEXT_VERSION}.aab${NC}"
         
         # Show file size
-        SIZE=$(du -h "$AAB_PATH/PennyWise-v${NEXT_VERSION}.aab" | cut -f1)
+        SIZE=$(du -h "$AAB_PATH/FinTrack-v${NEXT_VERSION}.aab" | cut -f1)
         echo "Size: $SIZE"
         
         if [ -n "$DO_PLAY" ]; then
@@ -484,10 +484,10 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo ""
             echo -e "${YELLOW}📱 Play Store Upload Instructions:${NC}"
             echo "1. Go to https://play.google.com/console"
-            echo "2. Select PennyWise app"
+            echo "2. Select FinTrack app"
             echo "3. Go to Release > Production (or Testing)"
             echo "4. Create new release"
-            echo "5. Upload: $AAB_PATH/PennyWise-v${NEXT_VERSION}.aab"
+            echo "5. Upload: $AAB_PATH/FinTrack-v${NEXT_VERSION}.aab"
             echo "6. Add release notes from RELEASE_NOTES.md"
         fi
     fi
@@ -501,16 +501,16 @@ elif [ -n "$AUTO_YES" ]; then
     REPLY=n
 else
     echo ""
-    read -p "Deploy webapp (pennywise-web) to Cloudflare? (y/n) " -n 1 -r
+    read -p "Deploy webapp (fintrack-web) to Cloudflare? (y/n) " -n 1 -r
     echo
 fi
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}🌐 Deploying webapp to Cloudflare...${NC}"
 
-    WEBAPP_DIR="$ORIGINAL_DIR/pennywise-web"
+    WEBAPP_DIR="$ORIGINAL_DIR/fintrack-web"
 
     if [ -d "$WEBAPP_DIR" ]; then
-        # The deploy script lives at pennywise-web/scripts/deploy.sh (what
+        # The deploy script lives at fintrack-web/scripts/deploy.sh (what
         # `bun run redeploy` runs). Older layouts kept it at the web root, so
         # accept either.
         WEB_DEPLOY=""
@@ -526,14 +526,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
                 echo -e "${GREEN}✅ Webapp deployed successfully${NC}"
             else
                 echo -e "${RED}❌ Webapp deployment failed${NC}"
-                echo -e "${YELLOW}You can retry manually: cd pennywise-web && bun run redeploy${NC}"
+                echo -e "${YELLOW}You can retry manually: cd fintrack-web && bun run redeploy${NC}"
             fi
             cd "$ORIGINAL_DIR"
         else
-            echo -e "${RED}❌ deploy script not found (looked for pennywise-web/scripts/deploy.sh and pennywise-web/deploy.sh)${NC}"
+            echo -e "${RED}❌ deploy script not found (looked for fintrack-web/scripts/deploy.sh and fintrack-web/deploy.sh)${NC}"
         fi
     else
-        echo -e "${RED}❌ pennywise-web directory not found${NC}"
+        echo -e "${RED}❌ fintrack-web directory not found${NC}"
     fi
 fi
 

@@ -31,8 +31,8 @@
 -keepclassmembers @androidx.room.Entity class * {
     *;
 }
--keep class com.pennywiseai.tracker.data.database.entity.** { *; }
--keep class com.pennywiseai.tracker.data.database.dao.** { *; }
+-keep class com.nrknithin.fintrack.data.database.entity.** { *; }
+-keep class com.nrknithin.fintrack.data.database.dao.** { *; }
 
 # Hilt
 -keep class dagger.hilt.** { *; }
@@ -55,11 +55,11 @@
 -keepclasseswithmembers class kotlinx.serialization.json.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
--keep,includedescriptorclasses class com.pennywiseai.tracker.**$$serializer { *; }
--keepclassmembers class com.pennywiseai.tracker.** {
+-keep,includedescriptorclasses class com.nrknithin.fintrack.**$$serializer { *; }
+-keepclassmembers class com.nrknithin.fintrack.** {
     *** Companion;
 }
--keepclasseswithmembers class com.pennywiseai.tracker.** {
+-keepclasseswithmembers class com.nrknithin.fintrack.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 
@@ -75,8 +75,8 @@
 }
 
 # Keep data classes
--keep class com.pennywiseai.tracker.data.model.** { *; }
--keep class com.pennywiseai.tracker.domain.model.** { *; }
+-keep class com.nrknithin.fintrack.data.model.** { *; }
+-keep class com.nrknithin.fintrack.domain.model.** { *; }
 
 # Keep enum classes
 -keepclassmembers enum * {

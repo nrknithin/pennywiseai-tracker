@@ -1,9 +1,9 @@
-package com.pennywiseai.parser.core.test
+package com.nrknithin.fintrack.parser.core.test
 
-import com.pennywiseai.parser.core.ParsedTransaction
-import com.pennywiseai.parser.core.TransactionType
-import com.pennywiseai.parser.core.bank.BankParser
-import com.pennywiseai.parser.core.bank.BankParserFactory
+import com.nrknithin.fintrack.parser.core.ParsedTransaction
+import com.nrknithin.fintrack.parser.core.TransactionType
+import com.nrknithin.fintrack.parser.core.bank.BankParser
+import com.nrknithin.fintrack.parser.core.bank.BankParserFactory
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.DynamicTest.dynamicTest

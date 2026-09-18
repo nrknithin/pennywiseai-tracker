@@ -1,5 +1,5 @@
 kotlin version: 2.1.0
-error message: java.nio.file.NoSuchFileException: /Users/sarim/AndroidStudioProjects/pennywisecompose/app/build/generated/ksp/standardDebug/java/byRounds/1/dagger/hilt/internal/aggregatedroot/codegen/_com_pennywiseai_tracker_PennyWiseApplication.java
+error message: java.nio.file.NoSuchFileException: /Users/sarim/AndroidStudioProjects/fintrackcompose/app/build/generated/ksp/standardDebug/java/byRounds/1/dagger/hilt/internal/aggregatedroot/codegen/_com_fintrack_tracker_FinTrackApplication.java
 	at java.base/sun.nio.fs.UnixException.translateToIOException(Unknown Source)
 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(Unknown Source)
 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(Unknown Source)

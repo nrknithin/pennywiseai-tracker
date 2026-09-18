@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BANK_DIR = "parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/";
+const BANK_DIR = "parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // A parser fixed this long after it first landed is real post-launch breakage —
@@ -233,7 +233,7 @@ if (asJson) {
   console.log(JSON.stringify(facts, null, 2));
 } else {
   const pct = (n, d) => (d ? ((n / d) * 100).toFixed(0) : "0");
-  console.log(`\nPennyWise parser history — window: ${since}`);
+  console.log(`\nFinTrack parser history — window: ${since}`);
   console.log(`Repo's first commit: ${repoStart}\n`);
   console.log(`  Parsers ever written .................. ${facts.parsersEverAdded}`);
   console.log(`  Parser commits in window ............. ${facts.parserCommitsInWindow}`);
@@ -300,13 +300,13 @@ if (draftAudience) {
   }
 
   const systemPrompt =
-    "You draft posts about PennyWise, an open-source Android app that parses bank SMS on-device. " +
+    "You draft posts about FinTrack, an open-source Android app that parses bank SMS on-device. " +
     "You will be given MINED FACTS from the project's git history. Hard rules:\n" +
     "1. Every number and claim in the post must come from the mined facts. Invent nothing.\n" +
     "2. Do NOT claim banks 'changed their SMS format' unless the facts show that specifically. " +
     "The honest framing is that bank SMS has a long tail of formats a parser has to learn.\n" +
     "3. Value first. The post must be worth reading by someone who never installs the app. " +
-    "Mention PennyWise once, near the end, as a footnote.\n" +
+    "Mention FinTrack once, near the end, as a footnote.\n" +
     "4. No marketing voice, no emoji, no hype. Write like an engineer sharing a finding.\n" +
     "5. If the facts don't support an interesting post, say so plainly instead of padding.";
 

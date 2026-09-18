@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -33,7 +33,7 @@ class AlinmaBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("50"),
                     currency = "SAR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Establishment Name",
                     accountLast4 = "5678",
                     balance = BigDecimal("500.50"),
@@ -56,7 +56,7 @@ class AlinmaBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("3"),
                     currency = "SAR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Meed Express",
                     accountLast4 = "0000",
                     balance = BigDecimal("101.00"),
@@ -77,7 +77,7 @@ class AlinmaBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("125.50"),
                     currency = "SAR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Commercial Self-Technolog",
                     accountLast4 = "9999",
                     balance = BigDecimal("875.75"),
@@ -98,7 +98,7 @@ class AlinmaBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("75.25"),
                     currency = "SAR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Establishment Name",
                     accountLast4 = "8888",
                     isFromCard = true

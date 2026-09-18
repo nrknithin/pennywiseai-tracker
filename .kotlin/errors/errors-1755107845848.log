@@ -1,5 +1,5 @@
 kotlin version: 2.1.0
-error message: java.lang.Exception: Could not flush incremental caches in /Users/sarim/AndroidStudioProjects/pennywisecompose/app/build/kspCaches/standardDebug/symbolLookups: lookups.tab
+error message: java.lang.Exception: Could not flush incremental caches in /Users/sarim/AndroidStudioProjects/fintrackcompose/app/build/kspCaches/standardDebug/symbolLookups: lookups.tab
 	at org.jetbrains.kotlin.incremental.storage.BasicMapsOwner.forEachMapSafe(BasicMapsOwner.kt:95)
 	at org.jetbrains.kotlin.incremental.storage.BasicMapsOwner.flush(BasicMapsOwner.kt:41)
 	at com.google.devtools.ksp.LookupStorageWrapperImpl.flush(IncrementalContext.kt:238)
@@ -40,7 +40,7 @@ error message: java.lang.Exception: Could not flush incremental caches in /Users
 	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
 	at java.base/java.lang.Thread.run(Thread.java:1583)
-	Suppressed: java.lang.RuntimeException: java.io.IOException: writePrevChunkAddress:37774,163600,/Users/sarim/AndroidStudioProjects/pennywisecompose/app/build/kspCaches/standardDebug/symbolLookups/lookups.tab.values
+	Suppressed: java.lang.RuntimeException: java.io.IOException: writePrevChunkAddress:37774,163600,/Users/sarim/AndroidStudioProjects/fintrackcompose/app/build/kspCaches/standardDebug/symbolLookups/lookups.tab.values
 		at org.jetbrains.kotlin.com.intellij.util.io.PersistentMapImpl$2.onDropFromCache(PersistentMapImpl.java:313)
 		at org.jetbrains.kotlin.com.intellij.util.io.PersistentMapImpl$2.onDropFromCache(PersistentMapImpl.java:267)
 		at org.jetbrains.kotlin.com.intellij.util.containers.SLRUMap.clear(SLRUMap.java:132)
@@ -55,7 +55,7 @@ error message: java.lang.Exception: Could not flush incremental caches in /Users
 		at org.jetbrains.kotlin.incremental.storage.BasicMapsOwner$flush$1.invoke(BasicMapsOwner.kt:41)
 		at org.jetbrains.kotlin.incremental.storage.BasicMapsOwner.forEachMapSafe(BasicMapsOwner.kt:87)
 		... 39 more
-	Caused by: java.io.IOException: writePrevChunkAddress:37774,163600,/Users/sarim/AndroidStudioProjects/pennywisecompose/app/build/kspCaches/standardDebug/symbolLookups/lookups.tab.values
+	Caused by: java.io.IOException: writePrevChunkAddress:37774,163600,/Users/sarim/AndroidStudioProjects/fintrackcompose/app/build/kspCaches/standardDebug/symbolLookups/lookups.tab.values
 		at org.jetbrains.kotlin.com.intellij.util.io.PersistentHashMapValueStorage.saveHeader(PersistentHashMapValueStorage.java:301)
 		at org.jetbrains.kotlin.com.intellij.util.io.PersistentHashMapValueStorage.doAppendBytes(PersistentHashMapValueStorage.java:283)
 		at org.jetbrains.kotlin.com.intellij.util.io.PersistentHashMapValueStorage.appendBytes(PersistentHashMapValueStorage.java:251)

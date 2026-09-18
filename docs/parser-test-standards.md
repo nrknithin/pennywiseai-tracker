@@ -4,14 +4,14 @@ This repository provides a shared Kotlin test harness for all SMS parser impleme
 
 ## 1. Organise tests with JUnit 5 Dynamic Tests
 
-* Each parser must expose a dedicated JUnit 5 test class. Newer tests use `XxxParserTest.kt` under `src/test/kotlin/com/pennywiseai/parser/core/bank/`; many older tests sit at the test root with a `TestXxx` file prefix (the FAB suite is `TestFABParser.kt` containing `class FABParserTest`). Match whatever the file you're editing already uses.
+* Each parser must expose a dedicated JUnit 5 test class. Newer tests use `XxxParserTest.kt` under `src/test/kotlin/com/nrknithin/fintrack/parser/core/bank/`; many older tests sit at the test root with a `TestXxx` file prefix (the FAB suite is `TestFABParser.kt` containing `class FABParserTest`). Match whatever the file you're editing already uses.
 * Use `@TestFactory` instead of `@Test` for test suites that cover multiple scenarios.
 * Return `List<DynamicTest>` by leveraging `ParserTestUtils.runTestSuite` or `runFactoryTestSuite`.
 * This provides granular reporting where each test case appears as a separate result in the IDE and CI/CD logs.
 
 ## 2. Leverage `ParserTestUtils`
 
-* Import utilities from `com.pennywiseai.parser.core.test`:
+* Import utilities from `com.nrknithin.fintrack.parser.core.test`:
   * `ExpectedTransaction`
   * `ParserTestCase`
   * `SimpleTestCase`

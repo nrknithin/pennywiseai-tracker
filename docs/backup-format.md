@@ -1,6 +1,6 @@
 # Backup & Restore Format
 
-PennyWise exports the full local database + user preferences to a single JSON
+FinTrack exports the full local database + user preferences to a single JSON
 file and can restore it later, on the same or a newer app version. This
 document is the **contract** for that format: how it stays compatible across
 versions, and the rules you must follow when you change anything it touches.
@@ -15,9 +15,9 @@ versions, and the rules you must follow when you change anything it touches.
 
 | File | Role |
 |------|------|
-| `data/backup/BackupModels.kt` | The wrapper schema (`PennyWiseBackup`, `DatabaseSnapshot`, `PreferencesSnapshot`, …). All `@Serializable`, all fields defaulted. |
+| `data/backup/BackupModels.kt` | The wrapper schema (`FinTrackBackup`, `DatabaseSnapshot`, `PreferencesSnapshot`, …). All `@Serializable`, all fields defaulted. |
 | `data/backup/BackupSerializers.kt` | The `backupJson` instance + custom serializers for `BigDecimal` / `LocalDate` / `LocalDateTime`. The one source of truth for serialization behavior. |
-| `data/backup/BackupExporter.kt` | Reads the DB → builds `PennyWiseBackup` → `backupJson.encodeToString`. |
+| `data/backup/BackupExporter.kt` | Reads the DB → builds `FinTrackBackup` → `backupJson.encodeToString`. |
 | `data/backup/BackupImporter.kt` | `backupJson.decodeFromString` → inserts into the DB (MERGE or REPLACE_ALL), remapping foreign keys and skipping bad rows. |
 | `data/database/entity/*.kt` | The Room entities are serialized **directly** (each is `@Serializable`). |
 | `test/.../backup/BackupModelsTest.kt` | Round-trip + backward/forward compatibility regression tests. |
@@ -58,8 +58,8 @@ directions:
 | entity field keys | the Kotlin **property name** (camelCase, e.g. `merchantName`) |
 | wrapper-model keys | explicit `@SerialName` (snake_case, e.g. `merchant_mappings`) |
 
-Format string lives in `PennyWiseBackup.CURRENT_FORMAT` (`"PennyWise Backup v1.2"`).
-Imports accept any `PennyWiseBackup.COMPATIBLE_PREFIX` (`"PennyWise Backup v1"`).
+Format string lives in `FinTrackBackup.CURRENT_FORMAT` (`"FinTrack Backup v1.2"`).
+Imports accept any `FinTrackBackup.COMPATIBLE_PREFIX` (`"FinTrack Backup v1"`).
 
 ## Resilience
 
@@ -126,7 +126,7 @@ Always give it a default. `BackupSchemaGuardTest` fails the build otherwise.
 
 Run them:
 ```bash
-./gradlew :app:testStandardDebugUnitTest --tests "com.pennywiseai.tracker.data.backup.*"
+./gradlew :app:testStandardDebugUnitTest --tests "com.nrknithin.fintrack.data.backup.*"
 ```
 
 When you touch the backup format, **add a regression test that decodes an

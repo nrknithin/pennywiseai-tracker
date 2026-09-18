@@ -3,7 +3,7 @@
 # Requires ImageMagick 7+ (`magick`) or 6.x (`convert`) with WebP support.
 #
 # Usage (from anywhere):
-#   /Users/sarim/dev/personal/pennywiseai-tracker/scripts/generate_android_launcher_icons.sh
+#   /Users/sarim/dev/personal/fintrack-tracker/scripts/generate_android_launcher_icons.sh
 #
 # Or from repo root:
 #   ./scripts/generate_android_launcher_icons.sh
@@ -19,7 +19,7 @@ SOURCE_PNG="${SOURCE_PNG:-$ROOT/iosApp/iosApp/Assets.xcassets/AppIcon.appiconset
 RES="$ROOT/app/src/main/res"
 BG_FUZZ="${BG_FUZZ:-22}"
 TMPDIR="${TMPDIR:-/tmp}"
-WORK="$TMPDIR/pennywise_launcher_icons_$$"
+WORK="$TMPDIR/fintrack_launcher_icons_$$"
 mkdir -p "$WORK"
 
 if command -v magick >/dev/null 2>&1; then

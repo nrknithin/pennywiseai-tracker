@@ -1,6 +1,6 @@
 # Security Policy
 
-We take the security of PennyWise seriously and appreciate responsible disclosure.
+We take the security of FinTrack seriously and appreciate responsible disclosure.
 
 ## Reporting a Vulnerability
 

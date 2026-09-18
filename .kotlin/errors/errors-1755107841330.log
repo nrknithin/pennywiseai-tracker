@@ -1,5 +1,5 @@
 kotlin version: 2.1.0
-error message: java.nio.file.NoSuchFileException: /Users/sarim/AndroidStudioProjects/pennywisecompose/app/build/generated/ksp/standardDebug/java/byRounds
+error message: java.nio.file.NoSuchFileException: /Users/sarim/AndroidStudioProjects/fintrackcompose/app/build/generated/ksp/standardDebug/java/byRounds
 	at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92)
 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106)
 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111)

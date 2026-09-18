@@ -1,6 +1,6 @@
 # Store Listing Localization (Crowdin)
 
-PennyWise localizes its **Google Play store listing** (not yet the in-app UI)
+FinTrack localizes its **Google Play store listing** (not yet the in-app UI)
 with [Crowdin](https://crowdin.com) under an open-source license. This lets the
 listing appear in a user's language, which lifts store-listing conversion in
 non-English markets.
@@ -69,7 +69,7 @@ crowdin download                # pull translations into fastlane folders
 3. Re-run the workflow.
 
 > Tip: keep `title.txt` translations within 30 characters. Translators may keep
-> the "PennyWise AI" brand in Latin script and only localize "Expense Tracker".
+> the "FinTrack AI" brand in Latin script and only localize "Expense Tracker".
 
 ## Translation style guide (paste into the Crowdin project)
 
@@ -82,7 +82,7 @@ not getting stiff, robotic translations.
 > Devanagari and **keep the English loanwords people actually say** — "SMS",
 > "bank", "app", "budget", "AI". Avoid Sanskritized/government-form Hindi.
 >
-> **Always keep in Latin / untranslated:** `PennyWise AI`, `PennyWise`, `Pro`,
+> **Always keep in Latin / untranslated:** `FinTrack AI`, `FinTrack`, `Pro`,
 > `SMS`, `AI`, `AGPL`, `Qwen`, `UPI`, currency symbols (₹ $ AED …) and numbers.
 >
 > **Length:** the app **title** must stay ≤ 30 characters and the **short

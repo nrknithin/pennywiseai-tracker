@@ -1,0 +1,178 @@
+package com.nrknithin.fintrack.data.database.entity
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.Index
+import androidx.room.PrimaryKey
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
+import java.time.LocalDateTime
+
+/**
+ * Every email the sync fetched, logged **before** it is parsed (spec 03 §3.2, spec 11 R-11-05).
+ *
+ * Writing the row first is what makes the channel safe to interrupt: a crash mid-parse loses
+ * no mail, the Email Log can show exactly what was seen and why it was skipped, and
+ * "Re-process unmatched" (spec 11 R-11-10) can replay messages after the user adds a sender
+ * override or the app gains a parser.
+ *
+ * Every field has a default because this table reaches the backup (spec 01 constraint C4,
+ * upstream `CLAUDE.md` constraint 3).
+ */
+@Entity(
+    tableName = "email_messages",
+    indices = [
+        // One row per message per mailbox. This is the uniqueness the resumable sync leans
+        // on: a re-fetched UID is recognised rather than duplicated (spec 11 R-11-08).
+        Index(value = ["mailbox", "uid"], unique = true),
+        Index(value = ["received_at"]),
+        Index(value = ["processed"]),
+        Index(value = ["message_id"])
+    ]
+)
+@Serializable
+data class EmailMessageEntity(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id")
+    val id: Long = 0,
+
+    /** The IMAP folder this came from; in practice `[Gmail]/All Mail` (spec 11 R-11-02). */
+    @ColumnInfo(name = "mailbox")
+    val mailbox: String = "INBOX",
+
+    /** IMAP UID, unique within [mailbox] for a given UIDVALIDITY. */
+    @ColumnInfo(name = "uid")
+    val uid: Long = 0,
+
+    /** RFC 5322 Message-ID. Survives a UIDVALIDITY reset, so it is the second dedup key. */
+    @ColumnInfo(name = "message_id")
+    val messageId: String? = null,
+
+    /** Normalised lower-case sender address, without the display name. */
+    @ColumnInfo(name = "from_address")
+    val fromAddress: String = "",
+
+    @ColumnInfo(name = "subject")
+    val subject: String? = null,
+
+    /** Extracted text: `text/plain` when usable, else jsoup output for `text/html`. */
+    @ColumnInfo(name = "body")
+    val body: String = "",
+
+    /** md5 of the normalised body (spec 11 §11.5 step 4), used for twin detection. */
+    @ColumnInfo(name = "body_hash")
+    val bodyHash: String = "",
+
+    /** IMAP INTERNALDATE — when the server received it, not any date inside the body. */
+    @ColumnInfo(name = "received_at")
+    @Contextual
+    val receivedAt: LocalDateTime = LocalDateTime.now(),
+
+    @ColumnInfo(name = "processed")
+    val processed: Boolean = false,
+
+    /** Set when this email produced, or was linked to, a transaction. */
+    @ColumnInfo(name = "transaction_id")
+    val transactionId: Long? = null,
+
+    /** How many dues this email produced or merged into. */
+    @ColumnInfo(name = "due_count")
+    val dueCount: Int = 0,
+
+    /**
+     * Why nothing was created, when nothing was:
+     * `IGNORE:<rule>` · `NO_PARSER` · `UNKNOWN_SENDER` · `NON_TXN` · `DUPLICATE:<txnId>` ·
+     * `ERROR:<class>` · `RECEIPT_ONLY`.
+     */
+    @ColumnInfo(name = "skip_reason")
+    val skipReason: String? = null,
+
+    @ColumnInfo(name = "created_at")
+    @Contextual
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+
+    /**
+     * Whether the MIME tree carried an attachment part (spec 11 §11.5 step 3).
+     *
+     * Recorded even in M1, where nothing reads it: the flag is free at extraction time and
+     * cannot be recovered afterwards, because M1 keeps only the extracted text and the body
+     * is trimmed after `retainBodiesDays`. M5's PDF statement rules would otherwise have to
+     * re-download the mailbox to learn which mails had a PDF at all.
+     */
+    @ColumnInfo(name = "has_attachments")
+    val hasAttachments: Boolean = false,
+
+    /**
+     * Attachment filenames joined by `;` (spec 03 §3.2, R-11-12), or null when there were
+     * none — never an empty string, so "no attachments" and "names unknown" cannot be told
+     * apart by accident.
+     *
+     * Use [encodeAttachmentNames] / [decodeAttachmentNames] rather than joining by hand.
+     */
+    @ColumnInfo(name = "attachment_names")
+    val attachmentNames: String? = null,
+
+    /**
+     * True once the `retainBodiesDays` sweep has shortened [body] (spec 04 §4.3).
+     *
+     * Without this column a trimmed body is byte-indistinguishable from a genuinely short
+     * one: the sweep writes `substr(body, 1, 512)` and leaves nothing else behind, and
+     * [bodyHash] deliberately still holds the hash of the *untruncated* text, so the hash
+     * cannot tell the two apart either. A 512-character prefix can stop mid-amount or
+     * mid-reference, and spec 11 R-11-10's replay reads exactly this backlog — so a reader
+     * that could not see the truncation would file a figure nobody sent (spec 01 constraint
+     * C7) with the evidence already gone.
+     *
+     * Recorded now because it is free now: `email_messages` does not exist at v62, so
+     * `AutoMigration(62, 63)` creates the column and only `63.json` is re-exported. Nothing
+     * reads it yet — R-11-10 is the first consumer, and what it owes this flag is written on
+     * `EmailMessageDao.getUnmatched`.
+     *
+     * Scope is the retention sweep alone. The `maxBodyKb` cap applied at extraction time is a
+     * different truncation with a different remedy (re-fetch with a larger cap), and nothing
+     * records it today; conflating the two here would make "re-fetch and re-parse" the wrong
+     * advice for half the rows carrying the flag.
+     *
+     * Defaults to false in SQL as well as in Kotlin (spec 03 §3.2's `D` column for a NN bool),
+     * and false is the only honest default: it says "no sweep has recorded a truncation for
+     * this row". Defaulting to true would put every message on R-11-10's re-fetch list and
+     * leave the replay with nothing it could run. No row predating the column can exist to be
+     * mis-read either way — v63 has never shipped.
+     */
+    @ColumnInfo(name = "body_trimmed", defaultValue = "0")
+    val bodyTrimmed: Boolean = false
+) {
+    companion object {
+
+        /**
+         * The separator spec 03 §3.2 names for `attachment_names`.
+         *
+         * A single character, not a comma: commas are common in real filenames while `;` is
+         * rejected by Windows and rare everywhere else. [encodeAttachmentNames] still
+         * substitutes it out of a name, because "rare" is not "never".
+         */
+        const val ATTACHMENT_NAME_SEPARATOR = ";"
+
+        /**
+         * `;`-joins [names] for storage, or null when there is nothing to store.
+         *
+         * Blank names are dropped (a MIME part may carry a `Content-Type` with no `name`)
+         * and a separator inside a name becomes a space, so a filename can never read back
+         * as two attachments.
+         */
+        fun encodeAttachmentNames(names: List<String>): String? = names
+            .asSequence()
+            .map { it.trim().replace(ATTACHMENT_NAME_SEPARATOR, " ") }
+            .filter { it.isNotEmpty() }
+            .joinToString(ATTACHMENT_NAME_SEPARATOR)
+            .takeIf { it.isNotEmpty() }
+
+        /** The inverse of [encodeAttachmentNames]; null or empty yields an empty list. */
+        fun decodeAttachmentNames(raw: String?): List<String> {
+            if (raw.isNullOrEmpty()) return emptyList()
+            return raw.split(ATTACHMENT_NAME_SEPARATOR)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
+    }
+}

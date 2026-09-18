@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.pennywiseai.tracker"
+    namespace = "com.nrknithin.fintrack"
     compileSdk = 37
     
     buildFeatures {
@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.pennywiseai.tracker"
+        applicationId = "com.nrknithin.fintrack"
         minSdk = 26
         targetSdk = 36
         versionCode = 103
@@ -25,18 +25,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
-        // Load RSA public key from local.properties
-        val localPropertiesFile = rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            val localProperties = Properties()
-            localProperties.load(localPropertiesFile.inputStream())
-
-            val rsaPublicKey = localProperties.getProperty("RSA_PUBLIC_KEY", "")
-            buildConfigField("String", "RSA_PUBLIC_KEY", "\"$rsaPublicKey\"")
-        } else {
-            // Fallback empty key for CI/CD builds
-            buildConfigField("String", "RSA_PUBLIC_KEY", "\"\"")
-        }
+        // The RSA_PUBLIC_KEY BuildConfig field was removed with DeviceEncryption and
+        // SmsReportUrlBuilder: it existed only to encrypt device data for upstream's
+        // web parser, which this fork does not call. Nothing reads it now.
     }
 
     signingConfigs {
@@ -85,7 +76,7 @@ android {
         create("personal") {
             dimension = "version"
             // Owner's choice (2026-09-18). Spec 05 §5.2 wrote `in.nrk.fin`; recorded in
-            // docs/FORK-CHANGES.md. Package names *in code* stay com.pennywiseai.tracker so the
+            // docs/FORK-CHANGES.md. Package names *in code* stay com.nrknithin.fintrack so the
             // upstream diff stays small — only the installed identity changes.
             //
             // This is the identity Android installs under, and it is effectively permanent: a
@@ -221,7 +212,7 @@ android {
             all {
                 // Gradle's default test heap is 512 MB, and the suite outgrew it: each
                 // Robolectric sandbox loads an instrumented copy of the Android framework,
-                // and the Room suites add a generated `PennyWiseDatabase_Impl` and an
+                // and the Room suites add a generated `FinTrackDatabase_Impl` and an
                 // in-memory SQLite per test. Past that line the worker JVM dies *while*
                 // writing its results, so Gradle fails the task with
                 // `NoSuchFileException: …/binary/in-progress-results-generic.bin` or a bare
@@ -343,7 +334,7 @@ dependencies {
 
     // Timber, so the release build logs through one tree that drops VERBOSE/DEBUG and
     // redacts amounts and last-4s from everything above (spec 04 §4.6, AC-11-04). The
-    // tree itself is `RedactingReleaseTree` in util/LogRedactor.kt; PennyWiseApplication
+    // tree itself is `RedactingReleaseTree` in util/LogRedactor.kt; FinTrackApplication
     // plants it. Nothing here depends on Android, so the redactor is a plain JVM test.
     implementation(libs.timber)
 
@@ -397,7 +388,7 @@ dependencies {
     // instrumented build of the same library and cannot be used from src/test.
     testImplementation(libs.mockk)
 
-    // Robolectric, so a real PennyWiseDatabase can be opened from a JVM unit test. Until this
+    // Robolectric, so a real FinTrackDatabase can be opened from a JVM unit test. Until this
     // landed no SQL in this repo had ever run: every DAO was verified only by Room's
     // compile-time check, and every DAO "test" asserted against a hand-written fake, which can
     // agree with the Kotlin signature while the SQL underneath is wrong. Robolectric brings its

@@ -1,6 +1,6 @@
 # Bank SMS Support
 
-PennyWise parses bank SMS into transactions through a registry of dedicated parsers. As of August 2026 the registry holds **144 parsers covering 23 countries**.
+FinTrack parses bank SMS into transactions through a registry of dedicated parsers. As of August 2026 the registry holds **144 parsers covering 23 countries**.
 
 This page explains how support works and where to look things up. It deliberately doesn't repeat the full bank list — that list is machine-generated and would drift the moment someone adds a parser without updating prose.
 
@@ -14,7 +14,7 @@ After adding, removing, or renaming any parser, run:
 ./scripts/update-supported-banks.sh
 ```
 
-It regenerates the JSON, the README bank table, the Play listing copy, and copies for pennywise-web. CI fails on the next push if you forget.
+It regenerates the JSON, the README bank table, the Play listing copy, and copies for fintrack-web. CI fails on the next push if you forget.
 
 ## How an SMS becomes a transaction
 
@@ -22,7 +22,7 @@ It regenerates the JSON, the README bank table, the Play listing copy, and copie
 2. `BankParserFactory.getParsers()` returns every parser whose `canHandle(sender)` matches the sender ID.
 3. Each candidate parser's `parse()` runs against the body in **registration order** until one returns a `ParsedTransaction`. Order matters — a broad matcher placed above a narrow one will swallow its messages.
 
-Parsers extend one of five base classes in `parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/`: `BankParser` (generic international), `BaseIndianBankParser`, `UAEBankParser`, `BaseIranianBankParser`, or `BaseThailandBankParser`. Pick the regional base when one exists; it carries currency handling and common patterns for that market.
+Parsers extend one of five base classes in `parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/`: `BankParser` (generic international), `BaseIndianBankParser`, `UAEBankParser`, `BaseIranianBankParser`, or `BaseThailandBankParser`. Pick the regional base when one exists; it carries currency handling and common patterns for that market.
 
 Full contributor walkthrough: [adding-bank-parsers.md](adding-bank-parsers.md). Test conventions: [parser-test-standards.md](parser-test-standards.md).
 
@@ -46,7 +46,7 @@ Two of the current card patterns in `HDFCBankParser.kt` show the flavor:
 "...spent on Card XX1234"
 ```
 
-Each pattern lives beside its siblings in the same parser file, so grepping a bank's name inside `parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/` shows every message shape it handles.
+Each pattern lives beside its siblings in the same parser file, so grepping a bank's name inside `parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/` shows every message shape it handles.
 
 ## Adding a bank
 

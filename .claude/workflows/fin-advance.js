@@ -56,7 +56,7 @@ const GROUND_RULES = `
 
 ## The project
 Fin is a private Android money tracker (Kotlin, Compose, Room, Hilt, WorkManager), forked from
-the open-source PennyWise AI tracker at commit c512c7c. It reads bank SMS and Gmail, and turns
+the open-source FinTrack AI tracker at commit c512c7c. It reads bank SMS and Gmail, and turns
 them into transactions, dues, subscriptions, loans and receipts.
 
 Repo root: ${ROOT}   Branch: fin/main
@@ -164,8 +164,8 @@ those are.`,
     ask: `Check the REPO HYGIENE invariants, and report any that are broken.
 
   - No personal data in fork-owned paths. Run the PII sweep: grep the fork's own files under
-    parser-core/src/{main,test}/kotlin/com/pennywiseai/parser/core/{email,text} and
-    app/src/main/java/com/pennywiseai/tracker/data/email for real-looking account digits,
+    parser-core/src/{main,test}/kotlin/com/nrknithin/fintrack/parser/core/{email,text} and
+    app/src/main/java/com/nrknithin/fintrack/data/email for real-looking account digits,
     names, UPI handles, phone numbers. Read docs/FORK-CHANGES.md for what redaction convention
     is in force. Upstream's own files are deliberately out of scope.
   - spec/ is git-ignored and untracked (git ls-files spec must return nothing).
@@ -297,7 +297,7 @@ Your gate: \`${task.gate}\`
 
 ${task.parallelSafe ? `**Do NOT run Gradle.** You are running alongside other agents in this same working tree, and
 Gradle keeps one incremental state per build directory: two builds at once corrupt it, producing
-impossible results like a missing PennyWiseDatabase_Impl.class while the compile task reports
+impossible results like a missing FinTrackDatabase_Impl.class while the compile task reports
 UP-TO-DATE. Report gateResult "could-not-run" — the Verify phase runs the gate once, serially,
 and its result is the authoritative one. A wrong green here is worse than no green.` :
 `Do the work, then RUN THE GATE and report what it actually printed. You are running serially, so

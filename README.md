@@ -1,56 +1,56 @@
 <a name="top"></a>
-[![PennyWise AI Banner](banner.png)](https://github.com/sarim2000/pennywiseai-tracker)
+[![FinTrack AI Banner](banner.png)](https://github.com/sarim2000/pennywiseai-tracker)
 [![GitHub stars](https://img.shields.io/github/stars/sarim2000/pennywiseai-tracker?style=social)](https://github.com/sarim2000/pennywiseai-tracker)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84)](https://developer.android.com/about/versions/oreo/android-8.0)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF)](https://kotlinlang.org/)
 [![Privacy](https://img.shields.io/badge/AI-100%25_On--Device-FF6B6B)](https://ai.google.dev/edge)
-[![Downloads](https://img.shields.io/badge/Downloads-100+-green)](https://play.google.com/store/apps/details?id=com.pennywiseai.tracker)
-[![F-Droid](https://img.shields.io/f-droid/v/com.pennywiseai.tracker?color=1976d2)](https://f-droid.org/packages/com.pennywiseai.tracker/)
+[![Downloads](https://img.shields.io/badge/Downloads-100+-green)](https://play.google.com/store/apps/details?id=com.nrknithin.fintrack)
+[![F-Droid](https://img.shields.io/f-droid/v/com.nrknithin.fintrack?color=1976d2)](https://f-droid.org/packages/com.nrknithin.fintrack/)
 [![GitHub release](https://img.shields.io/github/v/release/sarim2000/pennywiseai-tracker)](https://github.com/sarim2000/pennywiseai-tracker/releases)
 [![GitHub last commit](https://img.shields.io/github/last-commit/sarim2000/pennywiseai-tracker)](https://github.com/sarim2000/pennywiseai-tracker/commits)
 [![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2)](https://discord.gg/H3xWeMWjKQ)
 [![Greptile: The War on Bugs](https://www.greptile.com/badge.svg)](https://www.greptile.com/?utm_source=oss_badge&utm_medium=readme&utm_campaign=greptile_for_open_source)
 
-## PennyWise AI — Free & Open‑Source, private SMS‑powered expense tracker
+## FinTrack AI — Free & Open‑Source, private SMS‑powered expense tracker
 
 Turn bank SMS into a clean, searchable money timeline with on-device AI assistance. Parsing, storage, and AI all run on your phone.
 
 
 ⭐ **Star us on GitHub — join 300+ supporters!**
 
-[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20PennyWise%20AI%20-%20Privacy-first%20expense%20tracker%20with%20on-device%20AI:%20https://github.com/sarim2000/pennywiseai-tracker%20%23Android%20%23PrivacyFirst%20%23OnDeviceAI)
+[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20FinTrack%20AI%20-%20Privacy-first%20expense%20tracker%20with%20on-device%20AI:%20https://github.com/sarim2000/pennywiseai-tracker%20%23Android%20%23PrivacyFirst%20%23OnDeviceAI)
 [![Share](https://img.shields.io/badge/share-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/sarim2000/pennywiseai-tracker)
-[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=PennyWise%20AI%20-%20Privacy-first%20expense%20tracker&url=https://github.com/sarim2000/pennywiseai-tracker)
-[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/sarim2000/pennywiseai-tracker&text=Check%20out%20PennyWise%20AI)
+[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=FinTrack%20AI%20-%20Privacy-first%20expense%20tracker&url=https://github.com/sarim2000/pennywiseai-tracker)
+[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/sarim2000/pennywiseai-tracker&text=Check%20out%20FinTrack%20AI)
 
 ## Overview
 
-Your bank already texts you every transaction — PennyWise turns those SMS into a private, zero-setup expense tracker with on-device AI. No accounts, no sign-ups, no effort.
+Your bank already texts you every transaction — FinTrack turns those SMS into a private, zero-setup expense tracker with on-device AI. No accounts, no sign-ups, no effort.
 
-<a href="https://play.google.com/store/apps/details?id=com.pennywiseai.tracker">
+<a href="https://play.google.com/store/apps/details?id=com.nrknithin.fintrack">
   <img src="https://img.shields.io/badge/GET_IT_ON-Google_Play-00875F?style=for-the-badge&logo=google-play&logoColor=white" alt="Get it on Google Play" />
 </a>
 <a href="https://apps.apple.com/app/id6793073167">
   <img src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" alt="Download on the App Store" />
 </a>
-<a href="https://f-droid.org/packages/com.pennywiseai.tracker">
+<a href="https://f-droid.org/packages/com.nrknithin.fintrack">
   <img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80">
 </a>
 
 ### How it works
 
 1. **Grant SMS permission** (read-only) — no account creation, no inbox changes, no messages sent.
-2. **PennyWise parses your transactions instantly** — extracts amount, merchant, category, and date. New SMS are detected in real-time.
+2. **FinTrack parses your transactions instantly** — extracts amount, merchant, category, and date. New SMS are detected in real-time.
 3. **Get insights** — analytics, budgets, subscriptions, and an on-device AI assistant you can ask anything.
 
-## Why PennyWise
+## Why FinTrack
 
 **Key Differentiators**
 
 - **🔒 Private by Design** — All AI processing and transaction storage happen on your phone; no accounts, no analytics, no servers collecting your data
 - **⚡ Zero Setup** — Just grant SMS permission, no accounts to create, works instantly
-- **🆓 Free & Open Source** — AGPL v3 licensed, no ads, no trackers; an optional **PennyWise Pro** upgrade (unlimited rules, PDF statement imports, CSV export, account merge) supports the solo developer
+- **🆓 Free & Open Source** — AGPL v3 licensed, no ads, no trackers; an optional **FinTrack Pro** upgrade (unlimited rules, PDF statement imports, CSV export, account merge) supports the solo developer
 
 **Core Features**
 
@@ -68,7 +68,7 @@ Your bank already texts you every transaction — PennyWise turns those SMS into
 
 - **🔐 Biometric App Lock** — Fingerprint/face unlock with configurable timeout
 - **📱 Home Screen Widgets** — Budget progress and recent transactions at a glance
-- **📤 Data Export & Backup** — CSV export for taxes, full backup/restore (.pennywisebackup)
+- **📤 Data Export & Backup** — CSV export for taxes, full backup/restore (.fintrackbackup)
 - **🎭 Material You Theming** — Dynamic colors, multiple cover styles (Aurora, Gradient, Wave), light/dark/system themes
 - **✏️ Manual Transactions** — Add and edit transactions manually
 - **🔍 Search & Filters** — Filter by category, merchant, period, currency, transaction type
@@ -200,14 +200,14 @@ More banks being added regularly! [Request your bank →](https://github.com/sar
 
 ## Privacy First
 
-All AI processing happens on your device, powered by Google AI Edge LiteRT-LM running Qwen 2.5. Your SMS and transactions are parsed, stored, and analyzed **locally** — there are no accounts, **no analytics, crash-reporting, or telemetry SDKs** (no Firebase / Crashlytics / Sentry / Google Analytics — verify in `app/build.gradle.kts`), and no PennyWise server ever receives your financial data. The whole codebase is open source (AGPL v3) so every claim below is checkable.
+All AI processing happens on your device, powered by Google AI Edge LiteRT-LM running Qwen 2.5. Your SMS and transactions are parsed, stored, and analyzed **locally** — there are no accounts, **no analytics, crash-reporting, or telemetry SDKs** (no Firebase / Crashlytics / Sentry / Google Analytics — verify in `app/build.gradle.kts`), and no FinTrack server ever receives your financial data. The whole codebase is open source (AGPL v3) so every claim below is checkable.
 
 ### Network access — every outbound call the app can make
 
 1. **Google Play services** *(Play Store build only)* — Google Play Billing (optional Pro subscription), In-App Updates, and In-App Review. These are Google's SDKs (declared `standardImplementation`), and they do their own background connectivity to Google — this is the most likely source of any "background data" you notice, especially on a single-currency setup. **The [F-Droid](https://f-droid.org/) build strips all three and is fully Google-free.**
 2. **Exchange rates** — fetched from `open.er-api.com`. Automatic currency conversion runs **only when you hold more than one currency** (same-currency conversions make no call), but opening the currency picker also fetches the current rate list. Either way the request carries just a 3-letter currency code and a static `User-Agent` — no SMS, transactions, or device identifier — and results are cached locally. (`ExchangeRateProvider.kt`)
 3. **On-device AI model** — a one-time ~1.5 GB download from Cloudflare R2, **only if you open the AI chat and choose to download it**. The bytes are SHA-256 pinned; after that the AI runs 100% offline. (`Constants.MODEL_URL`)
-4. **Report a parsing problem** — when you use this flow it opens `pennywise.zynth.dev` with the SMS text, its sender, and an RSA-encrypted device identifier (your Android ID plus a timestamp) pre-filled, and parses them server-side to show a preview. Nothing is sent unless you start this yourself. (`SmsReportUrlBuilder.kt`, `DeviceEncryption.kt`)
+4. **Report a parsing problem** — when you use this flow it opens `fintrack.zynth.dev` with the SMS text, its sender, and an RSA-encrypted device identifier (your Android ID plus a timestamp) pre-filled, and parses them server-side to show a preview. Nothing is sent unless you start this yourself. (`SmsReportUrlBuilder.kt`, `DeviceEncryption.kt`)
 5. **Links** (Discord, GitHub, Play Store, backup docs) open your browser — no background data.
 
 Everything else stays on your phone.
@@ -273,7 +273,7 @@ Everything else stays on your phone.
 ```bash
 # Clone repository
 git clone https://github.com/sarim2000/pennywiseai-tracker.git
-cd pennywiseai-tracker
+cd fintrack-tracker
 
 # Environment check + fast test gate (same compile/test tasks CI runs)
 ./init.sh

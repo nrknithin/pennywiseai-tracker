@@ -109,7 +109,7 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
 
 - [ ] **How a mailbox gets connected — and therefore when M1d can close.** There is no way to
   enter an email address, a folder or an app password in the app today. `presentation/` has no
-  email package, and outside `EmailSyncWorker` and `PennyWiseApplication` nothing reads
+  email package, and outside `EmailSyncWorker` and `FinTrackApplication` nothing reads
   `EmailAccountConfigStore` or `EmailCredentialStore`. The periodic worker runs and
   `EmailSyncRunner.run()` returns `NotConfigured` every single time, forever. Two ways out:
   pull spec 47's Email Settings connect form forward into M1d, or accept a temporary
@@ -149,7 +149,7 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   ```
   adb shell dumpsys jobscheduler | grep email_sync_periodic
   ```
-  As of 2026-09-18 `PennyWiseApplication` enqueues `EmailSyncWorker.enqueuePeriodic` on process
+  As of 2026-09-18 `FinTrackApplication` enqueues `EmailSyncWorker.enqueuePeriodic` on process
   start. This is the first change in the fork whose whole effect is a *background run*, and
   WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,974 green tests
   measured on 2026-09-18 proves the job exists on a real device.
@@ -182,7 +182,7 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   exercised either, and nothing ever will.
   ```
   ./gradlew :app:assembleStandardRelease     # needs the release keystore above
-  adb logcat -d --pid=$(adb shell pidof -s com.pennywiseai.tracker) > fin-sync.log
+  adb logcat -d --pid=$(adb shell pidof -s com.nrknithin.fintrack) > fin-sync.log
   ```
   then the five greps in `docs/QA-CHECKLIST.md` §AC-11-04. **One of them, G3, asks you to grep the
   capture for your actual Gmail app password.** Type it into the shell and nowhere else — not into

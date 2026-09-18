@@ -1,4 +1,4 @@
-// Structured release-note generator for PennyWise.
+// Structured release-note generator for FinTrack.
 //
 // Reads a git commit list on stdin (one "- subject" per line) and prints ONE
 // JSON object on stdout:
@@ -58,7 +58,7 @@ const schema = {
 };
 
 const systemPrompt =
-  "You write release notes for PennyWise, an Android expense tracker that automatically parses bank SMS messages. " +
+  "You write release notes for FinTrack, an Android expense tracker that automatically parses bank SMS messages. " +
   "Turn raw git commits into clear, non-technical, user-facing notes. Group related changes, lead with the most " +
   "important, and omit pure-internal noise (refactors, CI, tests, version bumps). When commits add support for a " +
   "specific bank, name it.";

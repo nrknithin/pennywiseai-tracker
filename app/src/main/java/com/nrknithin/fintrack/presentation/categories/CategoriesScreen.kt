@@ -1,0 +1,309 @@
+package com.nrknithin.fintrack.presentation.categories
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.items
+import com.nrknithin.fintrack.ui.effects.overScrollVertical
+import com.nrknithin.fintrack.ui.effects.rememberOverscrollFlingBehavior
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nrknithin.fintrack.data.database.entity.CategoryEntity
+import com.nrknithin.fintrack.ui.components.CategoryChip
+import com.nrknithin.fintrack.ui.components.CustomTitleTopAppBar
+import com.nrknithin.fintrack.ui.components.cards.FinTrackCardV2
+import com.nrknithin.fintrack.ui.components.cards.SectionHeaderV2
+import com.nrknithin.fintrack.ui.theme.Dimensions
+import com.nrknithin.fintrack.ui.theme.Spacing
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CategoriesScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: CategoriesViewModel = hiltViewModel()
+) {
+    val categories by viewModel.categories.collectAsStateWithLifecycle()
+    val showAddEditDialog by viewModel.showAddEditDialog.collectAsStateWithLifecycle()
+    val editingCategory by viewModel.editingCategory.collectAsStateWithLifecycle()
+    val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
+    
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    
+    // Show snackbar messages
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let {
+            scope.launch {
+                snackbarHostState.showSnackbar(it)
+                viewModel.clearSnackbarMessage()
+            }
+        }
+    }
+    
+    // Group categories by type
+    val expenseCategories = categories.filter { !it.isIncome }
+    val incomeCategories = categories.filter { it.isIncome }
+
+    val scrollBehaviorSmall = TopAppBarDefaults.pinnedScrollBehavior()
+    val scrollBehaviorLarge = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val hazeState = remember { HazeState() }
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehaviorLarge.nestedScrollConnection),
+        containerColor = Color.Transparent,
+        topBar = {
+            CustomTitleTopAppBar(
+                scrollBehaviorSmall = scrollBehaviorSmall,
+                scrollBehaviorLarge = scrollBehaviorLarge,
+                title = "Categories",
+                hasBackButton = true,
+                hasActionButton = true,
+                navigationContent = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                hazeState = hazeState
+            )
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.showAddDialog() },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Category")
+            }
+        }
+    ) { paddingValues ->
+        val lazyListState = rememberLazyListState()
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(hazeState)
+                .background(MaterialTheme.colorScheme.background)
+                .overScrollVertical(),
+            contentPadding = PaddingValues(
+                start = Dimensions.Padding.content,
+                end = Dimensions.Padding.content,
+                top = Dimensions.Padding.content + paddingValues.calculateTopPadding(),
+                bottom = 100.dp // Space for FAB
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            flingBehavior = rememberOverscrollFlingBehavior { lazyListState }
+        ) {
+            // Expense Categories Section
+            if (expenseCategories.isNotEmpty()) {
+                item {
+                    SectionHeaderV2(title = "Expense Categories")
+                }
+
+                items(
+                    items = expenseCategories,
+                    key = { it.id }
+                ) { category ->
+                    // Sub-categories sit indented under their parent (#374).
+                    Box(modifier = Modifier.padding(start = if (category.parentId != null) Spacing.lg else Spacing.none)) {
+                        SwipeableCategoryItem(
+                            category = category,
+                            onEdit = { viewModel.showEditDialog(category) },
+                            onDelete = { viewModel.deleteCategory(category) },
+                            onToggleHidden = { viewModel.toggleCategoryHidden(category.id) }
+                        )
+                    }
+                }
+            }
+
+            // Income Categories Section
+            if (incomeCategories.isNotEmpty()) {
+                item {
+                    SectionHeaderV2(title = "Income Categories")
+                }
+
+                items(
+                    items = incomeCategories,
+                    key = { it.id }
+                ) { category ->
+                    Box(modifier = Modifier.padding(start = if (category.parentId != null) Spacing.lg else Spacing.none)) {
+                        SwipeableCategoryItem(
+                            category = category,
+                            onEdit = { viewModel.showEditDialog(category) },
+                            onDelete = { viewModel.deleteCategory(category) },
+                            onToggleHidden = { viewModel.toggleCategoryHidden(category.id) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add/Edit Dialog
+    if (showAddEditDialog) {
+        CategoryEditDialog(
+            category = editingCategory,
+            parentOptions = categories,
+            onDismiss = { viewModel.hideDialog() },
+            onSave = { name, color, isIncome, icon, parentId ->
+                viewModel.saveCategory(name, color, isIncome, icon, parentId)
+            },
+            onDelete = editingCategory?.let { cat ->
+                {
+                    viewModel.deleteCategory(cat)
+                    viewModel.hideDialog()
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeableCategoryItem(
+    category: CategoryEntity,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onToggleHidden: () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { dismissValue ->
+            when (dismissValue) {
+                SwipeToDismissBoxValue.EndToStart -> {
+                    if (!category.isSystem) {
+                        onDelete()
+                        true
+                    } else {
+                        false // Don't allow swipe for system categories
+                    }
+                }
+                else -> false
+            }
+        }
+    )
+    
+    SwipeToDismissBox(
+        state = dismissState,
+        backgroundContent = {
+            if (!category.isSystem) {
+                val color by animateColorAsState(
+                    when (dismissState.targetValue) {
+                        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.error
+                        else -> Color.Transparent
+                    },
+                    label = "background color"
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(color)
+                        .padding(horizontal = Dimensions.Padding.content),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.onError
+                        )
+                    }
+                }
+            }
+        },
+        content = {
+            CategoryItem(
+                category = category,
+                onClick = if (!category.isSystem) onEdit else null,
+                onToggleHidden = onToggleHidden
+            )
+        },
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = !category.isSystem
+    )
+}
+
+@Composable
+private fun CategoryItem(
+    category: CategoryEntity,
+    onClick: (() -> Unit)?,
+    onToggleHidden: () -> Unit = {}
+) {
+    FinTrackCardV2(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        contentPadding = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Dimensions.Padding.content)
+                // Dim a hidden category so it reads as "tucked away" in the manager.
+                .alpha(if (category.isHidden) 0.5f else 1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Category with colored dot
+            CategoryChip(
+                category = category,
+                showText = true,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Hide / unhide toggle — available for every category, including
+            // system defaults (the whole point of #736).
+            IconButton(onClick = onToggleHidden) {
+                Icon(
+                    imageVector = if (category.isHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (category.isHidden) "Show category" else "Hide category",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(Dimensions.Icon.medium)
+                )
+            }
+
+            // System badge
+            if (category.isSystem) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.padding(start = Spacing.sm)
+                ) {
+                    Text(
+                        text = "System",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(
+                            horizontal = Spacing.sm,
+                            vertical = Spacing.xs
+                        )
+                    )
+                }
+            } else {
+                // Edit icon for non-system categories
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Edit",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(Dimensions.Icon.medium)
+                        .padding(start = Spacing.sm)
+                )
+            }
+        }
+    }
+}

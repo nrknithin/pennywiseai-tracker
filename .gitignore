@@ -71,12 +71,12 @@ secrets.properties
 
 # Root-level deploy script may hold credentials; keep it local.
 # (Scoped to root so committed helper scripts like
-# pennywise-web/scripts/deploy.sh are still tracked.)
+# fintrack-web/scripts/deploy.sh are still tracked.)
 /deploy.sh
 
 # Generated Docker build context for the web container (staged copy of
-# parser-core created by pennywise-web/scripts/deploy.sh).
-/pennywise-web/.parser-core/
+# parser-core created by fintrack-web/scripts/deploy.sh).
+/fintrack-web/.parser-core/
 
 # IDE folders
 .idea
