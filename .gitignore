@@ -117,3 +117,11 @@ iosApp/fastlane/report.xml
 # Build specification for the Fin fork - derived from a personal mailbox,
 # so it stays local (see CLAUDE.md hard constraint 4: no PII in the repo).
 spec/
+
+# Local credential files. The Gmail app password is a live credential for a real
+# mailbox: spec 04 §4.1 (constraint C1) keeps it in EncryptedSharedPreferences on
+# the phone and nowhere else, so any copy on this machine is a development
+# convenience that must never reach the history.
+.env
+.env.*
+!.env.example
