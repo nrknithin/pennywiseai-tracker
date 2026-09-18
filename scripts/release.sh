@@ -44,7 +44,6 @@ trap cleanup_on_exit EXIT INT TERM
 #   --play        after building the .aab, upload it to Play Console as a draft
 #                 via scripts/upload-play.sh (implies building the bundle)
 #   --no-claude   skip Claude release-note generation, use the commit-list format
-#   --web         also deploy pennywise-web to Cloudflare
 #   --dry-run     print the plan + release notes, change nothing
 VERSION_BUMP="patch"
 DRY_RUN=""

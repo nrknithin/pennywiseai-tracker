@@ -9,8 +9,8 @@ version = "0.1.0-SNAPSHOT"
 kotlin {
     jvmToolchain(21)
     jvm()
-    iosArm64()
-    iosSimulatorArm64()
+    // Android only: the fork ships no iOS app, so the Kotlin/Native targets are gone.
+    // They cost a toolchain download and build time and nothing consumes them.
 
     sourceSets {
         commonMain.dependencies {
