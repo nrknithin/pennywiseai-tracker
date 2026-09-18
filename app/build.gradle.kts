@@ -217,6 +217,20 @@ android {
             // Without it a Robolectric test cannot start at all, and the Room suites under
             // `data/database` are the first tests here that need a real Android runtime.
             isIncludeAndroidResources = true
+
+            all {
+                // Gradle's default test heap is 512 MB, and the suite outgrew it: each
+                // Robolectric sandbox loads an instrumented copy of the Android framework,
+                // and the Room suites add a generated `PennyWiseDatabase_Impl` and an
+                // in-memory SQLite per test. Past that line the worker JVM dies *while*
+                // writing its results, so Gradle fails the task with
+                // `NoSuchFileException: …/binary/in-progress-results-generic.bin` or a bare
+                // `EOFException` — messages that name a missing file rather than a missing
+                // megabyte, and cost an afternoon to read correctly. The build daemon is
+                // already given 4 GB in `gradle.properties`; this is the test worker, which
+                // is a different JVM and inherits none of it.
+                it.maxHeapSize = "2g"
+            }
         }
     }
     lint {
