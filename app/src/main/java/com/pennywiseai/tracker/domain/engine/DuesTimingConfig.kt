@@ -1,6 +1,7 @@
 package com.pennywiseai.tracker.domain.engine
 
 import java.math.BigDecimal
+import java.math.RoundingMode
 
 /**
  * The four `settings.dues.*` figures that bound one question from two sides (spec 28 §28.4):
@@ -78,6 +79,21 @@ data class DuesTimingConfig(
      * @param billed the amount the biller stated; never a column's zero standing in for "unknown"
      *   (constraint C7 — both callers check that before they get here).
      */
-    fun amountTolerance(billed: BigDecimal): BigDecimal =
-        amountToleranceAbs
+    fun amountTolerance(billed: BigDecimal): BigDecimal {
+        if (amountTolerancePct.signum() <= 0) return amountToleranceAbs
+
+        // Percent, so divide by 100 here and nowhere else. compareTo rather than equals or
+        // maxOf-by-equality, because BigDecimal("500.00") and BigDecimal("500") are the same
+        // amount at different scales and only compareTo says so.
+        val fromPercent = billed.abs()
+            .multiply(amountTolerancePct)
+            .divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP)
+
+        return if (fromPercent > amountToleranceAbs) fromPercent else amountToleranceAbs
+    }
+
+    private companion object {
+        val ONE_HUNDRED: BigDecimal = BigDecimal("100")
+        const val MONEY_SCALE = 2
+    }
 }
