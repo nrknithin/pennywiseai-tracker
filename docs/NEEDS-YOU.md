@@ -32,7 +32,26 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   and an `app/` copy are both covered). Upstream ignored `*.jks` but not the properties file that
   points at it — until this run, only the absence of the files kept the promise true.
 
-- [ ] **Firebase project** (only if you want M8 — the wake-up push and encrypted cloud snapshots).
+- [x] **Firebase project — settled on 2026-09-18.** Reusing an existing project rather than
+  creating one: **`byt-play`** (console.firebase.google.com/project/byt-play), Firestore already
+  in **`asia-south1`**, which is what spec 08 §8.4 wants and is unchangeable after creation — so
+  this project is usable as-is and no new one is needed.
+  **Three things about it that differ from the spec's assumptions:**
+  - The **project ID cannot be renamed.** `byt-play` is permanent: it stays in the console URL,
+    the default storage bucket, and `projectId` in `local.properties`. Only the display name is
+    editable. Cosmetic, but it will look wrong forever.
+  - **Billing is already enabled (Blaze).** Spec 08's entire cost argument assumes the free Spark
+    plan, where exceeding quota throttles. On Blaze it bills instead, so a runaway sync loop costs
+    money rather than stopping. **Set a budget alert before pointing anything at it.**
+  - Its **existing Firestore rules** serve the previous app. Spec 08 §8.7 replaces them with
+    owner-only rules, which will break anything still using `byt-play`.
+  *Still needed from the owner:* the four values (`projectId` = `byt-play`, `appId`, `apiKey`,
+  `senderId`) into git-ignored `local.properties`, and the Android app registered in the console
+  under package **`com.nrknithin.fin`** with the debug and release SHA-1s.
+  *Note:* the Firebase CLI is **not** installed on this machine — npm's global root is empty and
+  `firebase` is not on PATH, despite the owner believing otherwise. Nothing depends on it yet.
+
+- [ ] **Firebase project (original entry, superseded by the one above)**
   Four values — `projectId`, `appId`, `apiKey`, `senderId` — into git-ignored `local.properties`,
   plus `google-services.json` kept beside the keystore.
   *Meanwhile:* M8 is skipped entirely. Spec constraint C8 says the app is complete with every
