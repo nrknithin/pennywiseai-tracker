@@ -40,6 +40,8 @@ enum class OnBoardingStep {
 data class OnBoardingUiState(
     val currentStep: OnBoardingStep = OnBoardingStep.WELCOME,
     val userName: String = "",
+    /** The name came from Google and the PROFILE field is not editable. */
+    val isNameLocked: Boolean = false,
     val selectedAvatarIndex: Int = 0,
     val profileImageUri: Uri? = null,
     val selectedBackgroundColor: Int = 0,
@@ -90,7 +92,28 @@ class OnBoardingViewModel @Inject constructor(
         0xFFACB0BE.toInt()  // Overlay2
     )
 
+    init {
+        // Seed the profile name BEFORE the PROFILE step can render. Without this,
+        // uiState.userName stays "" and OnBoardingBottomBar's PROFILE branch
+        // (enabled = uiState.userName.isNotBlank()) is permanently disabled — onboarding
+        // would dead-end on a field the user cannot type into.
+        viewModelScope.launch {
+            val googleName = userPreferencesRepository.userPreferences.first()
+                .authDisplayName?.trim().orEmpty()
+            if (googleName.isNotBlank()) {
+                _uiState.update { it.copy(userName = googleName, isNameLocked = true) }
+            }
+            // Google returned no usable name -> the field stays editable and unlocked.
+            // That is the only reason Continue remains reachable in that case.
+        }
+    }
+
+    /**
+     * Ignored while the name came from Google. Guarded here, not only in the composable,
+     * so the rule holds for every caller.
+     */
     fun updateUserName(name: String) {
+        if (_uiState.value.isNameLocked) return
         _uiState.update { it.copy(userName = name) }
     }
 

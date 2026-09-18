@@ -75,6 +75,27 @@ fun FinTrackNavHost(
                 }
             )
         }
+        composable<SignIn>(
+            enterTransition = { fadeIn(tween(300)) + slideInVertically { it / 4 } },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = { fadeIn(tween(300)) },
+            popExitTransition = { fadeOut(tween(200)) + slideOutVertically { it / 4 } }
+        ) {
+            com.nrknithin.fintrack.ui.screens.auth.SignInScreen(
+                onSignedIn = { hasCompletedOnboarding ->
+                    // Explicit navigate, like AppLockScreen's onUnlocked — the start
+                    // destination cannot recompute, it is pinned by remember{} above.
+                    val next = StartDestinationResolver.resolve(
+                        isAuthGateCleared = true,
+                        hasCompletedOnboarding = hasCompletedOnboarding
+                    )
+                    navController.navigate(next) {
+                        launchSingleTop = true
+                        popUpTo(SignIn) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable<OnBoarding>(
             enterTransition = { fadeIn(tween(300)) + slideInVertically { it / 4 } },
             exitTransition = { fadeOut(tween(200)) },
@@ -113,6 +134,14 @@ fun FinTrackNavHost(
                 themeViewModel = themeViewModel,
                 onNavigateBack = {
                     navController.safePopBackStack()
+                },
+                onSignedOut = {
+                    // popUpTo(0) clears the whole stack. Anything less leaves Home behind
+                    // the shut gate, one back gesture away from the entire ledger.
+                    navController.navigate(SignIn) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 },
                 onNavigateToCategories = {
                     navController.navigate(Categories) { launchSingleTop = true }

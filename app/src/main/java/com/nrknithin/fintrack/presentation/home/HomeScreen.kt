@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarToday
@@ -169,6 +170,9 @@ fun HomeScreen(
 
     // Bottom sheet menu state
     var showMenuSheet by remember { mutableStateOf(false) }
+    // Opened by tapping the avatar. Upstream put its paywall on that tap.
+    var showProfileSheet by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
     var showShareSheet by remember { mutableStateOf(false) }
     var showEditWidgetsSheet by remember { mutableStateOf(false) }
     // Period the sheet should open on. The monthly banner points it at the finished
@@ -383,13 +387,11 @@ fun HomeScreen(
                         userName = uiState.userName,
                         profileImageUri = uiState.profileImageUri,
                         profileBackgroundColor = uiState.profileBackgroundColor,
-                        onAvatarClick = onNavigateToSettings,
+                        onAvatarClick = { showProfileSheet = true },
                         onMenuClick = { showMenuSheet = true },
                         profiles = uiState.profiles,
                         selectedProfileId = uiState.selectedProfileId,
                         onProfileSelected = { viewModel.updateSelectedProfile(it) },
-                        isProEntitled = isProEntitled,
-                        onUpgradeClick = { showUpgradeSheet = true },
                         cycleEnd = currentCycleWindow.second
                     )
                 }
@@ -1121,6 +1123,112 @@ fun HomeScreen(
     }
 
     // Avatar menu bottom sheet
+    // Profile sheet — what the avatar opens. Replaces upstream's upgrade paywall, which
+    // this fork will never sell. Identity in, identity out, nothing else.
+    if (showProfileSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showProfileSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = Spacing.xl),
+                verticalArrangement = Arrangement.spacedBy(Spacing.Layout.groupedListGap)
+            ) {
+                Text(
+                    text = uiState.userName.ifBlank { "User" },
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    // No email is shown because none is stored — the ID token's `id` field
+                    // is the account address and AuthGateway deliberately never keeps it.
+                    text = when {
+                        !uiState.isSignInAvailable -> "Google sign-in not configured"
+                        uiState.isSignedIn -> "Signed in with Google"
+                        else -> "Not signed in"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = Spacing.sm)
+                )
+
+                // Log out is the only action here, and it is unconditional. There is no
+                // "sign in" counterpart because you cannot be on this screen without
+                // having passed the gate — offering it would be a button that navigates
+                // to a screen you already cleared. Signing in again is what the start
+                // screen is for: log out, land there, sign in.
+                //
+                // Unconditional rather than gated on isSignedIn: while
+                // fin.google.webClientId is unset the gate reports itself unavailable and
+                // auto-clears, so you reach Home with the flag false. Hiding the button
+                // in that state would leave no way back to the start screen at all.
+                // Hidden while the build has no OAuth web client ID. Logging out in that
+                // state was incoherent rather than merely useless: it navigated to the
+                // sign-in screen, but ThemeViewModel's cold-start rule is
+                // `!signInSupported || authSignedIn`, so the very next launch cleared the
+                // gate and went straight to Home — the app appeared to forget a log out it
+                // had actually recorded. Gating on availability rather than shipping a
+                // button whose effect one restart undoes.
+                if (uiState.isSignInAvailable) {
+                    MenuListItem(
+                        headline = "Log out",
+                        icon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null) },
+                        position = ListItemPosition.Single,
+                        onClick = {
+                            showProfileSheet = false
+                            showSignOutDialog = true
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showSignOutDialog = false },
+            title = { Text("Log out?") },
+            text = {
+                Text(
+                    "Your transactions, accounts and settings stay on this device. " +
+                        "You'll be taken back to the sign-in screen."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSignOutDialog = false
+                        // Navigate from the callback, once the flag is actually written.
+                        // popUpTo(0) clears the whole back stack: without it the gate is
+                        // shut but Home is still behind it on the stack, one back gesture
+                        // away.
+                        viewModel.signOut {
+                            navController.navigate(com.nrknithin.fintrack.navigation.SignIn) {
+                                popUpTo(0) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    }
+                ) {
+                    Text("Log out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     if (showMenuSheet) {
         ModalBottomSheet(
             onDismissRequest = { showMenuSheet = false },

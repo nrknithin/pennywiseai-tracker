@@ -104,6 +104,13 @@ fun SettingsScreen(
     onNavigateToExchangeRates: () -> Unit = {},
     onNavigateToAppearance: () -> Unit = {},
     onNavigateToImportStatement: () -> Unit = {},
+    /**
+     * Called once sign-out has actually been written. Closing the gate does not move the
+     * user on its own — the NavHost's start destination is pinned by an unkeyed
+     * remember{} — so without this the flag flips and the whole ledger stays on screen,
+     * one back gesture from everything.
+     */
+    onSignedOut: () -> Unit = {},
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     appLockViewModel: com.nrknithin.fintrack.ui.viewmodel.AppLockViewModel = hiltViewModel(),
     permissionViewModel: com.nrknithin.fintrack.ui.viewmodel.PermissionViewModel = hiltViewModel()
@@ -140,6 +147,7 @@ fun SettingsScreen(
     val requestFolderPicker by settingsViewModel.requestFolderPicker.collectAsStateWithLifecycle()
     var showUpgradeSheet by remember { mutableStateOf(false) }
     var showSupportDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog by remember { mutableStateOf(false) }
     // F-Droid builds have no Play billing, so they show a "Support development"
     // tip jar instead of the (un-buyable) Pro upsell. Play builds keep Pro.
     val isFdroidBuild = com.nrknithin.fintrack.BuildConfig.IS_FDROID_BUILD
@@ -280,6 +288,27 @@ fun SettingsScreen(
                         },
                         onClick = { showUpgradeSheet = true },
                         position = ListItemPosition.Single,
+                    )
+                }
+            }
+
+            // ── Account ──
+            // Only rendered on a build that actually has a sign-in gate, and only once a
+            // Google account has been adopted. Without it a wrong-account choice would be
+            // unrecoverable short of clearing app data, which would also destroy the
+            // transaction database.
+            if (settingsViewModel.isSignInAvailable && themeUiState.authDisplayName != null) {
+                SectionHeaderV2(title = "Account")
+                SettingsGroup {
+                    SettingsNavItem(
+                        icon = Icons.Default.AccountCircle,
+                        iconBgColor = purple_light,
+                        iconTint = purple_dark,
+                        title = "Signed in",
+                        subtitle = themeUiState.authDisplayName!!,
+                        onClick = { showSignOutDialog = true },
+                        position = ListItemPosition.Single,
+                        trailingText = "Sign out"
                     )
                 }
             }
@@ -786,6 +815,35 @@ fun SettingsScreen(
     }
 
     // ── Dialogs ──
+
+    // Sign out confirmation
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showSignOutDialog = false },
+            title = { Text("Sign out?") },
+            text = {
+                Text(
+                    "You'll be asked to sign in again the next time you open FinTrack. " +
+                        "Your transactions, accounts and profile stay on this device."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSignOutDialog = false
+                        settingsViewModel.signOut(onSignedOut = onSignedOut)
+                    }
+                ) {
+                    Text("Sign out")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     // Display Currency Dialog
     if (showDisplayCurrencyDialog) {

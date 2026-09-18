@@ -17,8 +17,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.nrknithin.fintrack.navigation.AppLock
-import com.nrknithin.fintrack.navigation.Home
-import com.nrknithin.fintrack.navigation.OnBoarding
+import com.nrknithin.fintrack.navigation.SignIn
+import com.nrknithin.fintrack.navigation.StartDestinationResolver
 import com.nrknithin.fintrack.navigation.FinTrackNavHost
 import com.nrknithin.fintrack.ui.theme.FinTrackTheme
 import com.nrknithin.fintrack.ui.viewmodel.AppLockViewModel
@@ -68,8 +68,11 @@ fun FinTrackApp(
 
     // Migrate existing users: if they already have SMS permission from the old flow,
     // auto-complete onboarding so they aren't forced through it on update
-    LaunchedEffect(themeUiState.hasCompletedOnboarding) {
-        if (!themeUiState.hasCompletedOnboarding) {
+    // Gated on the sign-in gate being cleared: left ungated it auto-completes onboarding
+    // while the user is still on the sign-in screen, and the PROFILE step that adopts the
+    // Google name would then never render.
+    LaunchedEffect(themeUiState.hasCompletedOnboarding, themeUiState.isAuthGateCleared) {
+        if (themeUiState.isAuthGateCleared && !themeUiState.hasCompletedOnboarding) {
             val hasSmsPermission = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.READ_SMS
             ) == PackageManager.PERMISSION_GRANTED
@@ -79,18 +82,39 @@ fun FinTrackApp(
         }
     }
 
-    // Set correct start destination based on loaded preferences
-    val startDestination: Any = remember(themeUiState.hasCompletedOnboarding) {
-        if (themeUiState.hasCompletedOnboarding) Home else OnBoarding
+    // Set correct start destination based on loaded preferences.
+    // The sign-in gate is decided HERE and never later: FinTrackNavHost pins this value
+    // with an UNKEYED remember{}, so the decision must be complete on the first
+    // non-loading frame. It is — isAuthGateCleared rides the same DataStore emission that
+    // the isLoading early-return above already waits for.
+    val startDestination: Any = remember(
+        themeUiState.isAuthGateCleared,
+        themeUiState.hasCompletedOnboarding
+    ) {
+        StartDestinationResolver.resolve(
+            isAuthGateCleared = themeUiState.isAuthGateCleared,
+            hasCompletedOnboarding = themeUiState.hasCompletedOnboarding
+        )
     }
 
     // Observe lock state changes and navigate to lock screen if needed
     // But don't navigate when user is actively in Settings configuring app lock
-    LaunchedEffect(appLockUiState.isLocked, appLockUiState.isLockEnabled) {
+    LaunchedEffect(appLockUiState.isLocked, appLockUiState.isLockEnabled, themeUiState.isAuthGateCleared) {
         if (appLockUiState.isLocked && appLockUiState.isLockEnabled) {
             val currentRoute = navController.currentDestination?.route
-            // Don't navigate if already on lock screen or in Settings (user is configuring)
-            if (currentRoute != AppLock::class.qualifiedName &&
+            // Don't navigate if already on lock screen, on the sign-in gate, or in
+            // Settings (user is configuring).
+            //
+            // The route exemption — not an isAuthGateCleared guard — is what keeps the lock
+            // from landing past the gate: AppLockScreen's onUnlocked navigates to Home with
+            // popUpTo(AppLock){inclusive}, so it must never fire while SignIn is showing.
+            // A gate guard here would also disable the lock for the rest of the session
+            // after Settings -> Sign out, leaving the whole ledger visible on resume.
+            // currentRoute is null before the first destination settles, which is also
+            // before the gate has been decided, so null is treated as "not yet safe".
+            if (currentRoute != null &&
+                currentRoute != AppLock::class.qualifiedName &&
+                currentRoute != SignIn::class.qualifiedName &&
                 currentRoute != com.nrknithin.fintrack.navigation.Settings::class.qualifiedName) {
                 navController.navigate(AppLock) {
                     // Don't add to back stack, force lock screen
@@ -101,16 +125,25 @@ fun FinTrackApp(
         }
     }
     
-    // Navigate to transaction detail when editTransactionId changes
-    LaunchedEffect(editTransactionId) {
+    // Navigate to transaction detail when editTransactionId changes.
+    //
+    // Gated, like everything else that navigates: these two effects run on the first
+    // non-loading frame, which is the frame that shows SignIn. Ungated they walk straight
+    // past the gate into app content, and there are four live ways in — the launcher
+    // long-press shortcut MainActivity registers in onCreate, the quick-add tile, the
+    // recent-transactions widget, and an edit-transaction notification — plus the
+    // fintrack://add deep link, which any other app can fire. Keying on the gate also
+    // re-fires the intent once sign-in completes, so the shortcut is honoured, not lost.
+    LaunchedEffect(editTransactionId, themeUiState.isAuthGateCleared) {
+        if (!themeUiState.isAuthGateCleared) return@LaunchedEffect
         editTransactionId?.let { transactionId ->
             navController.navigate(com.nrknithin.fintrack.navigation.TransactionDetail(transactionId)) { launchSingleTop = true }
         }
     }
 
     // Navigate directly to Add Transaction when requested (e.g., from widget shortcut)
-    LaunchedEffect(openAddTransaction) {
-        if (openAddTransaction) {
+    LaunchedEffect(openAddTransaction, themeUiState.isAuthGateCleared) {
+        if (themeUiState.isAuthGateCleared && openAddTransaction) {
             navController.navigate(com.nrknithin.fintrack.navigation.AddTransaction()) {
                 launchSingleTop = true
             }

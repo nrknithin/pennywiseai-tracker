@@ -8,6 +8,23 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Google sign-in needs the project's OAuth *web* client ID. It is not a secret — it ships
+// in every APK — but it is per-project, so it is read from the git-ignored local.properties
+// rather than committed. Same mechanism, and same reason, as the release signing block and
+// the existing fin.firebase.* values.
+//
+// Absent => "" => the build still compiles and ./init.sh stays green; the gate then reports
+// itself unconfigured (AuthGateway.isAvailable == false) and the app behaves EXACTLY as it
+// did before this change. That is deliberate: nothing can break before the console side is
+// ready, and it is also the escape hatch if the gate ever misbehaves.
+val finLocalProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+// A val holding a lambda, not a top-level `fun`: the lambda form is accepted by every
+// Kotlin DSL script compiler without qualification.
+val finProp: (String) -> String = { key -> finLocalProperties.getProperty(key, "") }
+
 android {
     namespace = "com.nrknithin.fintrack"
     compileSdk = 37
@@ -28,6 +45,12 @@ android {
         // The RSA_PUBLIC_KEY BuildConfig field was removed with DeviceEncryption and
         // SmsReportUrlBuilder: it existed only to encrypt device data for upstream's
         // web parser, which this fork does not call. Nothing reads it now.
+
+        // defaultConfig, not a flavor: app/src/cloud is compiled into two flavors, and a
+        // flavor-only field is one careless reference away from the HAS_CLOUD trap. Blank
+        // when fin.google.webClientId is absent, which is the unconfigured-and-harmless
+        // path described above.
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${finProp("fin.google.webClientId")}\"")
     }
 
     signingConfigs {
@@ -107,10 +130,25 @@ android {
         getByName("fdroid") {
             java.srcDir("src/unlocked/java")
             kotlin.srcDir("src/unlocked/java")
+            // The no-op AuthGateway. fdroid carries no Google Play libraries and must keep
+            // none, so it gets an impl with the same FQN that reports the gate unavailable.
+            java.srcDir("src/nocloud/java")
+            kotlin.srcDir("src/nocloud/java")
+        }
+        getByName("standard") {
+            // The REAL Credential Manager gateway. `standard` is what Android Studio
+            // selects by default (isDefault = true) and what ./init.sh app compiles, so a
+            // gate that is not here is a gate the owner never sees. `standard` already
+            // carries Play dependencies (app-update, review, billing), so this adds no new
+            // class of dependency to it.
+            java.srcDir("src/cloud/java")
+            kotlin.srcDir("src/cloud/java")
         }
         getByName("personal") {
             java.srcDir("src/unlocked/java")
             kotlin.srcDir("src/unlocked/java")
+            java.srcDir("src/cloud/java")
+            kotlin.srcDir("src/cloud/java")
         }
     }
 
@@ -427,6 +465,17 @@ dependencies {
     // proprietary library; its build keeps Pro features unlocked via the
     // FdroidBillingGateway stub and does not need the dep.
     "standardImplementation"(libs.billing.ktx)
+
+    // Google sign-in — the flavors that may carry Google Play libraries. NOT plain
+    // implementation(): that would put Play services on fdroid's classpath, which today
+    // has exactly none, and would break the F-Droid policy the build file maintains on
+    // purpose. fdroid compiles NoAuthGateway from src/nocloud instead.
+    "standardImplementation"(libs.androidx.credentials)
+    "standardImplementation"(libs.androidx.credentials.play.services.auth)
+    "standardImplementation"(libs.googleid)
+    "personalImplementation"(libs.androidx.credentials)
+    "personalImplementation"(libs.androidx.credentials.play.services.auth)
+    "personalImplementation"(libs.googleid)
 
     testImplementation(kotlin("test"))
 }

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -240,7 +241,9 @@ private fun ProfileStep(
         Spacer(modifier = Modifier.height(Spacing.xl))
 
         Text(
-            text = "What should we call you?",
+            // The screen must not ask a question it will not let you answer: when the name
+            // comes from the signed-in Google account the field below is locked.
+            text = "Set up your profile",
             style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold
@@ -250,8 +253,28 @@ private fun ProfileStep(
 
         TextField(
             value = uiState.userName,
-            onValueChange = { viewModel.updateUserName(it) },
+            onValueChange = { if (!uiState.isNameLocked) viewModel.updateUserName(it) },
+            // Both flags: enabled = false greys it and blocks focus, readOnly stops any
+            // programmatic edit path.
+            enabled = !uiState.isNameLocked,
+            readOnly = uiState.isNameLocked,
             label = { Text("Your name") },
+            supportingText = if (uiState.isNameLocked) {
+                { Text("From your Google account") }
+            } else null,
+            // The one unambiguous cue that the field is locked on purpose. Keeping the
+            // text at full contrast (below) fixes the "looks broken" problem but removes
+            // every signal that it is uneditable — so a tap that raises no keyboard and
+            // shows no cursor has nothing to explain it. A lock glyph carries that at
+            // full contrast in both themes, where dimming would not.
+            trailingIcon = if (uiState.isNameLocked) {
+                {
+                    Icon(
+                        imageVector = Icons.Filled.Lock,
+                        contentDescription = "Name comes from your Google account and cannot be edited"
+                    )
+                }
+            } else null,
             singleLine = true,
             shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth(),
@@ -261,7 +284,17 @@ private fun ProfileStep(
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
                 focusedLabelColor = MaterialTheme.colorScheme.primary,
-                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.7f)
+                unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.7f),
+                // Not optional: M3 drops disabled text to 38% alpha, which makes the user's
+                // own name read as broken rather than deliberately locked, in both themes.
+                // The label and supporting text stay at full-opacity onSurfaceVariant —
+                // dimming an already-muted role stacks two reductions (docs/design.md).
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                disabledIndicatorColor = Color.Transparent,
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledSupportingTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
 

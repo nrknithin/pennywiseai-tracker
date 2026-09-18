@@ -67,11 +67,33 @@ class SettingsViewModel @Inject constructor(
     private val folderBackupWriter: FolderBackupWriter,
     private val scheduledFolderBackupScheduler: ScheduledFolderBackupScheduler,
     private val contactsResolver: com.nrknithin.fintrack.data.contacts.ContactsResolver,
+    private val authRepository: com.nrknithin.fintrack.auth.AuthRepository,
     entitlementGate: EntitlementGate,
 ) : ViewModel() {
 
     /** Drives the Settings → Pro row: shows "Active" when true, "Upgrade" when false. */
     val isProEntitled: StateFlow<Boolean> = entitlementGate.isProEntitled
+
+    /**
+     * False on fdroid and on any build without an OAuth web client ID — those builds have
+     * no sign-in gate at all, so they must not show a row offering to leave it.
+     */
+    val isSignInAvailable: Boolean get() = authRepository.isAvailable
+
+    /**
+     * Closes the gate. `user_name`, the avatar, the background colour and the whole Room
+     * database are deliberately left alone — signing out is not a factory reset.
+     */
+    /**
+     * @param onSignedOut run after the flag is written, so the caller navigates to the
+     * gate only once it is genuinely shut — never on the optimistic assumption it will be.
+     */
+    fun signOut(onSignedOut: () -> Unit = {}) {
+        viewModelScope.launch {
+            authRepository.signOut()
+            onSignedOut()
+        }
+    }
     
     private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     

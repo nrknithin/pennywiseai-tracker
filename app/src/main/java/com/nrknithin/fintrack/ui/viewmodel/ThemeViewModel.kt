@@ -2,6 +2,7 @@ package com.nrknithin.fintrack.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nrknithin.fintrack.auth.AuthGateway
 import com.nrknithin.fintrack.data.preferences.AccentColor
 import com.nrknithin.fintrack.data.preferences.AppFont
 import com.nrknithin.fintrack.data.preferences.CoverStyle
@@ -18,8 +19,18 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ThemeViewModel @Inject constructor(
-    private val userPreferencesRepository: UserPreferencesRepository
+    private val userPreferencesRepository: UserPreferencesRepository,
+    authGateway: AuthGateway
 ) : ViewModel() {
+
+    /**
+     * Constant for the process (false on fdroid and on any build without an OAuth web
+     * client ID), so it folds into the emission that already clears [ThemeUiState.isLoading].
+     * No second ViewModel at the root of FinTrackApp, and no frame in which the gate is
+     * undecided. Read once here, never probed again — the map{} below runs on every
+     * preference write.
+     */
+    private val signInSupported: Boolean = authGateway.isAvailable
 
     val themeUiState: StateFlow<ThemeUiState> = userPreferencesRepository.userPreferences
         .map { preferences ->
@@ -38,7 +49,9 @@ class ThemeViewModel @Inject constructor(
                 hasCompletedOnboarding = preferences.hasCompletedOnboarding,
                 userName = preferences.userName,
                 profileImageUri = preferences.profileImageUri,
-                profileBackgroundColor = preferences.profileBackgroundColor
+                profileBackgroundColor = preferences.profileBackgroundColor,
+                isAuthGateCleared = !signInSupported || preferences.authSignedIn,
+                authDisplayName = preferences.authDisplayName
             )
         }
         .stateIn(
@@ -123,5 +136,8 @@ data class ThemeUiState(
     val hasCompletedOnboarding: Boolean = false,
     val userName: String = "User",
     val profileImageUri: String? = null,
-    val profileBackgroundColor: Int = 0
+    val profileBackgroundColor: Int = 0,
+    /** True when the gate is satisfied, or when this build has no gate. */
+    val isAuthGateCleared: Boolean = false,
+    val authDisplayName: String? = null
 )

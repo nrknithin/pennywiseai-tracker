@@ -406,6 +406,19 @@ class PiiLintTest {
         ForkPath("app/src/test/java/com/nrknithin/fintrack/domain/usecase"),
         ForkPath("app/src/main/java/com/nrknithin/fintrack/worker"),
         ForkPath("app/src/main/java/com/nrknithin/fintrack/di"),
+        // The Google sign-in gate. Four of these five packages are new and one is a test
+        // package, and every one of them handles an account: the gateway sees a Google
+        // display name and an ID token, and `GoogleIdTokenCredential.id` — deliberately
+        // never touched — is the account's email address. Exactly the shape this lint
+        // exists to keep out of the tree, so they are scanned like the rest.
+        ForkPath("app/src/main/java/com/nrknithin/fintrack/auth"),
+        ForkPath("app/src/main/java/com/nrknithin/fintrack/ui/screens/auth"),
+        // Flavor source sets, not variants of one path: `cloud` compiles into standard and
+        // personal, `nocloud` into fdroid. Listed at the package root so a second class in
+        // either tree is scanned the day it lands.
+        ForkPath("app/src/cloud/java/com/nrknithin/fintrack"),
+        ForkPath("app/src/nocloud/java/com/nrknithin/fintrack"),
+        ForkPath("app/src/test/java/com/nrknithin/fintrack/auth"),
         ForkPath("app/src/main/java/com/nrknithin/fintrack/cloud", pending = true),
         ForkPath("app/src/test/java/com/nrknithin/fintrack/data/email"),
         // Shared with upstream, listed whole for the same reason as data/database above: a

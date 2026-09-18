@@ -6,6 +6,14 @@ import kotlinx.serialization.Serializable
 @Serializable
 object AppLock
 
+/**
+ * The sign-in gate. Start destination whenever the locally-persisted
+ * `auth_signed_in` flag is false and the build actually has a gateway.
+ * Sits ahead of [OnBoarding] — see StartDestinationResolver.
+ */
+@Serializable
+object SignIn
+
 @Serializable
 object OnBoarding
 

@@ -152,6 +152,16 @@ open class UserPreferencesRepository @Inject constructor(
         val PROFILE_IMAGE_URI = stringPreferencesKey("profile_image_uri")
         val PROFILE_BACKGROUND_COLOR = intPreferencesKey("profile_background_color")
         val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+
+        /**
+         * The sign-in gate. True once a Google account has been confirmed on this device.
+         * Read at cold start, from disk only — a returning user is never re-prompted and
+         * never needs the network. Nothing ABOUT the account is stored: no email, no
+         * account id, no token. Only the fact that one was chosen, and the display name.
+         */
+        val AUTH_SIGNED_IN = booleanPreferencesKey("auth_signed_in")
+        val AUTH_DISPLAY_NAME = stringPreferencesKey("auth_display_name")
+
         val MAIN_ACCOUNT_KEY = stringPreferencesKey("main_account_key")
         // True once the user explicitly picks a currency in the Settings selector.
         // While true, the main-account-derived currency must not override their choice.
@@ -207,6 +217,8 @@ open class UserPreferencesRepository @Inject constructor(
                     ?: if (preferences[PreferencesKeys.HAS_COMPLETED_ONBOARDING] == true) "avatar://0" else null,
                 profileBackgroundColor = preferences[PreferencesKeys.PROFILE_BACKGROUND_COLOR] ?: 0,
                 hasCompletedOnboarding = preferences[PreferencesKeys.HAS_COMPLETED_ONBOARDING] ?: false,
+                authSignedIn = preferences[PreferencesKeys.AUTH_SIGNED_IN] ?: false,
+                authDisplayName = preferences[PreferencesKeys.AUTH_DISPLAY_NAME],
                 mainAccountKey = preferences[PreferencesKeys.MAIN_ACCOUNT_KEY]
             )
         }
@@ -884,6 +896,35 @@ open class UserPreferencesRepository @Inject constructor(
         }
     }
 
+    /**
+     * The whole sign-in outcome in ONE transaction: the gate opens and, when Google
+     * supplied a name, that name becomes the profile name. Atomic on purpose — a
+     * process kill between two separate writes could leave the app past the gate with a
+     * stale name, and OnBoardingBottomBar's PROFILE button (enabled on a non-blank name)
+     * would be permanently disabled.
+     *
+     * A blank name writes neither key's name half: `user_name` keeps its value and the
+     * onboarding field stays editable, so the step can always be completed.
+     */
+    suspend fun applyGoogleIdentity(displayName: String?) {
+        val clean = displayName?.trim()
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTH_SIGNED_IN] = true
+            if (!clean.isNullOrBlank()) {
+                preferences[PreferencesKeys.AUTH_DISPLAY_NAME] = clean
+                preferences[PreferencesKeys.USER_NAME] = clean
+            }
+        }
+    }
+
+    /** Closes the gate. Deliberately leaves USER_NAME alone — see AuthRepository.signOut. */
+    suspend fun forgetGoogleIdentity() {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTH_SIGNED_IN] = false
+            preferences.remove(PreferencesKeys.AUTH_DISPLAY_NAME)
+        }
+    }
+
     suspend fun updateProfileImageUri(uri: String?) {
         context.dataStore.edit { preferences ->
             if (uri == null) {
@@ -980,6 +1021,8 @@ data class UserPreferences(
     val profileImageUri: String? = null,
     val profileBackgroundColor: Int = 0,
     val hasCompletedOnboarding: Boolean = false,
+    val authSignedIn: Boolean = false,
+    val authDisplayName: String? = null,
     val mainAccountKey: String? = null,
     val selectedProfileId: Long? = null,
     /** Day of the month (1..31) the budget cycle starts on. 1 = calendar month. */

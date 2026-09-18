@@ -88,7 +88,22 @@ class HomeViewModel @Inject constructor(
     private val restoreTransactionUseCase: RestoreTransactionUseCase,
     @ApplicationContext private val context: Context,
     entitlementGate: com.nrknithin.fintrack.billing.EntitlementGate,
+    private val authRepository: com.nrknithin.fintrack.auth.AuthRepository,
 ) : ViewModel() {
+
+    /**
+     * Closes the sign-in gate. Deliberately NOT a reset: `user_name`, the avatar, the
+     * background colour and the entire Room database survive. The caller navigates to
+     * SignIn afterwards — nothing here watches the flag and redirects, because the
+     * sign-in screen's own "continue without signing in" escape also leaves the gate
+     * shut, and an observer would yank that user straight back out of the app.
+     */
+    fun signOut(onSignedOut: () -> Unit) {
+        viewModelScope.launch {
+            authRepository.signOut()
+            onSignedOut()
+        }
+    }
 
     /**
      * Drives the subtle Pro chip in the home top bar — hidden when the
@@ -237,7 +252,10 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     userName = prefs.userName,
                     profileImageUri = prefs.profileImageUri,
-                    profileBackgroundColor = prefs.profileBackgroundColor
+                    profileBackgroundColor = prefs.profileBackgroundColor,
+                    isSignedIn = prefs.authSignedIn,
+                    authDisplayName = prefs.authDisplayName,
+                    isSignInAvailable = authRepository.isAvailable
                 )
             }
             .launchIn(viewModelScope)
@@ -1636,6 +1654,17 @@ class HomeViewModel @Inject constructor(
 
 data class HomeUiState(
     val userName: String = "User",
+    /** Whether a Google account is linked. Drives the profile sheet's sign in/out action. */
+    val isSignedIn: Boolean = false,
+    /** The Google display name, if one was returned. Null is normal, not an error. */
+    val authDisplayName: String? = null,
+    /**
+     * Whether this build can sign in at all — false when no OAuth web client ID was
+     * compiled in. When false the gate is inert: ThemeViewModel clears it on every cold
+     * start regardless of [isSignedIn], so offering a log out would promise a state the
+     * next launch silently undoes.
+     */
+    val isSignInAvailable: Boolean = false,
     val profileImageUri: String? = null,
     val profileBackgroundColor: Int = 0,
     val currentMonthTotal: BigDecimal = BigDecimal.ZERO,

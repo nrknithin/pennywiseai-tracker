@@ -15,6 +15,10 @@
     <!-- Internet permission for downloading AI model -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Network state, so a failed Google sign-in can tell "you're offline" apart from
+         "this build isn't registered". Read-only; nothing here starts a connection. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- Biometric permission for app lock feature -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 

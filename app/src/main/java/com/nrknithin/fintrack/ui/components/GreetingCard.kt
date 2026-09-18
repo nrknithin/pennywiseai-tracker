@@ -31,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -57,8 +56,6 @@ fun GreetingCard(
     profiles: List<ProfileEntity> = emptyList(),
     selectedProfileId: Long? = null,
     onProfileSelected: (Long?) -> Unit = {},
-    isProEntitled: Boolean = false,
-    onUpgradeClick: () -> Unit = {},
     // The last day of the user's current budget cycle. When null, the
     // subtitle falls back to the calendar month's end. The "X days left in
     // <month>" line then tracks the cycle (e.g. "4 days left in October" on
@@ -102,10 +99,11 @@ fun GreetingCard(
             .padding(horizontal = Dimensions.Padding.content, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Profile Avatar wrapped in a "membership ring" — the only Pro signal,
-        // no pill, no label. Solid gold = Pro member; dashed gold = free user
-        // (reads as "not yet filled / tap to unlock"). For free users tapping
-        // opens the upgrade sheet; Pro members tap through to settings.
+        // Profile Avatar wrapped in a ring. Upstream used this as its only Pro signal —
+        // dashed gold meant "free, tap to unlock" and the tap opened the paywall. The
+        // avatar now opens the profile sheet for everyone, so the dash would be pointing
+        // at behaviour that no longer exists: the ring is solid regardless of
+        // entitlement, and it is decoration rather than a call to action.
         val ringColor = yellow_dark
         Box(
             modifier = Modifier
@@ -115,16 +113,13 @@ fun GreetingCard(
                 .clip(CircleShape)
                 .drawBehind {
                     val stroke = 2.dp.toPx()
-                    val dash = if (!isProEntitled) {
-                        PathEffect.dashPathEffect(floatArrayOf(stroke * 2.5f, stroke * 2f), 0f)
-                    } else null
                     drawCircle(
                         color = ringColor,
                         radius = (size.minDimension - stroke) / 2f,
-                        style = Stroke(width = stroke, pathEffect = dash)
+                        style = Stroke(width = stroke)
                     )
                 }
-                .clickable(onClick = if (isProEntitled) onAvatarClick else onUpgradeClick),
+                .clickable(onClick = onAvatarClick),
             contentAlignment = Alignment.Center
         ) {
         Box(
