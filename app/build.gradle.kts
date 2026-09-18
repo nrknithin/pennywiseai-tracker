@@ -80,6 +80,43 @@ android {
             // Standard flavor includes all architectures (including x86 for emulators)
             buildConfigField("boolean", "IS_FDROID_BUILD", "false")
         }
+        // Fin's own flavor (spec 05 §5.2): fdroid's behaviour — everything unlocked, no Play
+        // billing — plus the optional cloud pieces of spec 08. This is the build that ships.
+        create("personal") {
+            dimension = "version"
+            // Owner's choice (2026-09-18). Spec 05 §5.2 wrote `in.nrk.fin`; recorded in
+            // docs/FORK-CHANGES.md. Package names *in code* stay com.pennywiseai.tracker so the
+            // upstream diff stays small — only the installed identity changes.
+            applicationId = "com.nrknithin.fin"
+            // Every Pro gate resolves to entitled, exactly as on fdroid (spec 02 §2.9).
+            buildConfigField("boolean", "IS_FDROID_BUILD", "true")
+            // Spec 08's cloud code compiles only here; the fdroid flavor stays the control
+            // build that proves the app is complete with every cloud feature off (C8).
+            buildConfigField("boolean", "HAS_CLOUD", "true")
+            ndk {
+                abiFilters += setOf("arm64-v8a", "armeabi-v7a")
+            }
+        }
+    }
+
+    // Product flavors in one dimension do NOT share source sets, so `personal` cannot see
+    // app/src/fdroid/. The four classes both need — FdroidBillingGateway, BillingModule,
+    // InAppReviewManager, InAppUpdateManager — live in app/src/unlocked/ and are wired into
+    // both here. Without this the personal flavor does not compile at all: app/src/main
+    // references EntitlementSource and PurchaseGateway, which only a flavor supplies.
+    // Both `java` and `kotlin`: AGP's java.srcDir registers the directory for the Java
+    // compiler, but the Kotlin plugin keeps its own source-set list and will not compile
+    // .kt files it has not been told about — the symptom is "Unresolved reference" from
+    // app/src/main for classes that plainly exist on disk.
+    sourceSets {
+        getByName("fdroid") {
+            java.srcDir("src/unlocked/java")
+            kotlin.srcDir("src/unlocked/java")
+        }
+        getByName("personal") {
+            java.srcDir("src/unlocked/java")
+            kotlin.srcDir("src/unlocked/java")
+        }
     }
 
     splits {

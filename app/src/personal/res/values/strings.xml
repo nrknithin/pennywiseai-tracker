@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Overrides the label from main. TRADEMARKS.md forbids shipping the upstream
+         name or logo, so the personal build must not call itself PennyWise. -->
+    <string name="app_name">Fin</string>
+</resources>
