@@ -1,7 +1,11 @@
 package com.pennywiseai.tracker.data.email
 
+import com.pennywiseai.parser.core.email.due.ParsedDue
 import com.pennywiseai.tracker.data.database.entity.DueStatus
 import com.pennywiseai.tracker.data.database.entity.TransactionType
+import com.pennywiseai.tracker.domain.engine.DueMergeConfig
+import com.pennywiseai.tracker.domain.engine.DueMergeEngine
+import com.pennywiseai.tracker.domain.engine.DuesTimingConfig
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -11,6 +15,7 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import com.pennywiseai.parser.core.email.due.DueKind as ParserDueKind
 
 /**
  * M1's settlement seam: "find an open due this transaction plausibly settles, and mark it"
@@ -258,4 +263,87 @@ class PlausibleDueSettlerTest {
 
         assertNull(settled)
     }
+
+    // -----------------------------------------------------------------------------------------
+    // One set of figures, read from two modules
+    //
+    // `DueMergeEngine` matches a payment *notice* to a bill over the same span this settler
+    // matches the *transaction* the same mail produces, and `mergeWindow`'s KDoc rests its whole
+    // safety argument on the two being identical: a notice that could reach a bill the settler
+    // could never settle raises spec 26's UNMATCHED_PAYMENT_NOTICE against a statement nobody
+    // paid. Until `DuesTimingConfig` existed the two sides defaulted the four figures
+    // independently, in different modules, and nothing here or anywhere compared them.
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    fun `settlement and the payment-notice merge read one span, not two copies of it`() {
+        val settlement = SettlementConfig()
+        val merge = DueMergeConfig()
+
+        assertEquals(merge.paymentNoticeEarlyDays, settlement.earlyPayDays)
+        assertEquals(merge.paymentNoticeLateDays, settlement.latePayDays)
+        assertEquals(merge.amountToleranceAbs, settlement.amountToleranceAbs)
+        assertEquals(merge.amountTolerancePct, settlement.amountTolerancePct)
+    }
+
+    @Test
+    fun `one settings object configures both readers`() {
+        // What M2 will actually do with `settings.dues.*`: build the shared value once and hand
+        // it to both. Wiring one reader and leaving the other on its defaults is the mistake this
+        // type removes — there is no second set of defaults left to forget.
+        val timing = DuesTimingConfig(
+            earlyPayDays = 10,
+            latePayDays = 20,
+            amountToleranceAbs = BigDecimal("5.00"),
+            amountTolerancePct = BigDecimal("3")
+        )
+        val merge = DueMergeConfig(timing = timing)
+        val settlement = SettlementConfig(timing = timing)
+
+        assertEquals(10L, merge.paymentNoticeEarlyDays)
+        assertEquals(10L, settlement.earlyPayDays)
+        assertEquals(20L, merge.paymentNoticeLateDays)
+        assertEquals(20L, settlement.latePayDays)
+        assertEquals(BigDecimal("5.00"), settlement.amountToleranceAbs)
+        assertEquals(BigDecimal("3"), merge.amountTolerancePct)
+    }
+
+    @Test
+    fun `the furthest bill a payment notice reaches is the furthest bill a payment settles`() {
+        // The same claim as a behaviour rather than as a pair of fields: the window
+        // `DueMergeEngine` gives a confirmation is the window this settler searches.
+        val paidOn = LocalDate.of(2026, 9, 15)
+        val window = DueMergeEngine(clock).mergeWindow(paymentConfirmation(paidOn))
+        val settlement = SettlementConfig()
+
+        assertEquals(paidOn.plusDays(settlement.earlyPayDays), window.to)
+        assertEquals(paidOn.minusDays(settlement.latePayDays), window.from)
+    }
+
+    @Test
+    fun `a bill at the far edge of earlyPayDays settles and a day beyond it does not`() {
+        // The settler's own end of that span, at the edge rather than at December (the existing
+        // "further out than earlyPayDays" case is 75 days out and survives any figure above 45).
+        val paidOn = at(18, 0).toLocalDate()
+        val edge = paidOn.plusDays(SettlementConfig().earlyPayDays)
+
+        val atEdge = FakeDueDao(listOf(openDue(id = 7, dueDate = edge)))
+        assertEquals(7L, runBlocking { settler(atEdge).trySettle(cardPayment()) })
+
+        val beyond = FakeDueDao(listOf(openDue(id = 7, dueDate = edge.plusDays(1))))
+        assertNull(runBlocking { settler(beyond).trySettle(cardPayment()) })
+    }
+
+    /**
+     * A "payment received" notice as `CardPaymentConfirmationDueParser` produces one: the amount
+     * is what was *paid* and the date is when it was paid, because no such mail states a due date.
+     */
+    private fun paymentConfirmation(paidOn: LocalDate): ParsedDue = ParsedDue(
+        issuer = "Axis Bank",
+        kind = ParserDueKind.CARD_STATEMENT,
+        amount = BigDecimal("1234.00"),
+        dueDate = paidOn,
+        accountLast4 = "1234",
+        source = "AXIS"
+    ).copy(paymentConfirmed = true)
 }

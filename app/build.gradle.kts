@@ -286,6 +286,12 @@ dependencies {
     // place the one secret in the app is stored (spec 04 §4.1, constraint C1).
     implementation(libs.androidx.security.crypto)
 
+    // Timber, so the release build logs through one tree that drops VERBOSE/DEBUG and
+    // redacts amounts and last-4s from everything above (spec 04 §4.6, AC-11-04). The
+    // tree itself is `RedactingReleaseTree` in util/LogRedactor.kt; PennyWiseApplication
+    // plants it. Nothing here depends on Android, so the redactor is a plain JVM test.
+    implementation(libs.timber)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)

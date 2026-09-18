@@ -32,6 +32,17 @@ data class DueMergeConfig(
     val mergeDateToleranceDays: Long = 2,
 
     /**
+     * The four figures the merge shares with settlement — §20.5's span and its amount tolerance.
+     *
+     * Embedded rather than re-declared, because `SettlementConfig` reads the same four and the
+     * two must agree; [DuesTimingConfig] says why at length. The accessors below are the names
+     * this side of the app calls them by: they are *views* of that one value, so there is exactly
+     * one place any of these numbers is written, and M2 wires one object into both readers.
+     */
+    val timing: DuesTimingConfig = DuesTimingConfig()
+) {
+
+    /**
      * How far **ahead of** a payment confirmation (§20.4 step 7) the bill it cleared may be
      * dated — `settings.dues.earlyPayDays` (45), the early side of §20.5's settlement span.
      *
@@ -43,24 +54,26 @@ data class DueMergeConfig(
      * which is **asymmetric** — 45 days of paying early, 60 of paying late — and is the same
      * span `PlausibleDueSettler` gives the *transaction* the same mail produces. A confirmation
      * that could reach a bill the settler could never settle would raise spec 26's
-     * `UNMATCHED_PAYMENT_NOTICE` against a statement nobody paid.
+     * `UNMATCHED_PAYMENT_NOTICE` against a statement nobody paid. That argument is only sound
+     * while the two spans are one span, which is what [timing] makes true by construction.
      */
-    val paymentNoticeEarlyDays: Long = 45,
+    val paymentNoticeEarlyDays: Long get() = timing.earlyPayDays
 
     /**
      * How far **behind** a payment confirmation the bill it cleared may be dated — how late the
      * user is allowed to be. `settings.dues.latePayDays` (60).
      */
-    val paymentNoticeLateDays: Long = 60,
+    val paymentNoticeLateDays: Long get() = timing.latePayDays
 
     /**
      * §20.5 step 4's amount tolerance, which [DueMergeEngine.chooseTarget] scores a payment
      * confirmation against its candidate bills with: `settings.dues.amountToleranceAbs` (1.00)
-     * and `amountTolerancePct` (0), the same two figures `SettlementConfig` carries.
+     * and `amountTolerancePct` (0), the same two figures `SettlementConfig` carries — the same
+     * two values now, not merely the same two defaults.
      */
-    val amountToleranceAbs: BigDecimal = BigDecimal("1.00"),
-    val amountTolerancePct: BigDecimal = BigDecimal.ZERO
-)
+    val amountToleranceAbs: BigDecimal get() = timing.amountToleranceAbs
+    val amountTolerancePct: BigDecimal get() = timing.amountTolerancePct
+}
 
 /**
  * The source-precedence ladder of spec 20 §20.4 step 4: **bank statement > bank reminder >
@@ -315,6 +328,13 @@ class DueMergeEngine @Inject constructor(
      *
      * A due whose amount nobody has stated scores nothing rather than matching everything: its
      * `amount` is the NOT NULL column's zero, not a figure anybody billed (constraint C7).
+     *
+     * The two branches apply **different** tolerances, deliberately: the billed amount gets the
+     * absolute figure and the percentage ([DuesTimingConfig.amountTolerance]), the minimum gets
+     * the absolute figure alone. §20.5 step 4 writes the percentage against `due.amount` only, and
+     * `PlausibleDueSettler.amountAgrees` reads it the same way — see [DuesTimingConfig] for why
+     * widening the minimum by a percentage of the bill would be the reading that settles the wrong
+     * statement.
      */
     private fun confirmationScore(
         due: DueEntity,
@@ -323,9 +343,8 @@ class DueMergeEngine @Inject constructor(
     ): Int {
         val paid = parsed.amount?.abs() ?: return 0
         val billed = statedAmount(due)?.takeIf { it.signum() > 0 }
-        if (billed != null) {
-            val tolerance = config.amountToleranceAbs.max(billed.multiply(config.amountTolerancePct))
-            if ((paid - billed).abs() <= tolerance) return AMOUNT_MATCH_SCORE
+        if (billed != null && (paid - billed).abs() <= config.timing.amountTolerance(billed)) {
+            return AMOUNT_MATCH_SCORE
         }
         val minimum = due.minimumDue?.takeIf { it.signum() > 0 }
         if (minimum != null && (paid - minimum).abs() <= config.amountToleranceAbs) {

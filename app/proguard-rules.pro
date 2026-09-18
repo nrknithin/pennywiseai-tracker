@@ -89,13 +89,45 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# Remove logging in release
+# Remove logging in release (inherited from upstream; spec 04 §4.6, AC-11-04).
+#
+# This is what keeps the inherited android.util.Log call sites out of the release build
+# the owner installs — SmsTransactionProcessor alone logs the merchant and category, the
+# transaction hash, the inserted row id and, via processBalanceUpdate, the account last-4.
+# R8 honours -assumenosideeffects only with optimisation on, which the release build type
+# gets from proguard-android-optimize.txt (the plain proguard-android.txt sets
+# -dontoptimize and would silently make this a no-op).
+#
+# `e` and `w` are stripped along with the rest, deliberately: several of those call sites
+# pass an exception whose message quotes an amount or an account, and AC-11-04 admits no
+# "except for errors" clause. Diagnostics in release go through Timber instead, below.
+#
+# Do NOT add `println` to this list. RedactingReleaseTree emits through
+# android.util.Log.println precisely because it is not here; listing it would delete the
+# only logging the release build has left.
 -assumenosideeffects class android.util.Log {
     public static *** d(...);
     public static *** v(...);
     public static *** i(...);
     public static *** w(...);
     public static *** e(...);
+}
+
+# Timber (spec 04 §4.6). Belt and braces for the two levels the release tree already drops
+# at runtime: RedactingReleaseTree.isLoggable refuses VERBOSE/DEBUG, and these rules let R8
+# delete the call and its arguments outright, so a `Timber.d("saved %s", merchant)` does not
+# even build its string in a release build. INFO and above are kept and redacted.
+#
+# Both classes are listed because Timber's static API is a companion named `Forest`:
+# depending on the call site, Kotlin emits either the @JvmStatic bridge on `Timber` or a
+# virtual call on `Timber$Forest`. No `static` modifier is given, so both forms match.
+-assumenosideeffects class timber.log.Timber {
+    public *** v(...);
+    public *** d(...);
+}
+-assumenosideeffects class timber.log.Timber$Forest {
+    public *** v(...);
+    public *** d(...);
 }
 
 # Protobuf

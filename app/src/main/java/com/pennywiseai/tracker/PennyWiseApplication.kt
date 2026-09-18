@@ -8,6 +8,7 @@ import androidx.work.Configuration
 import com.pennywiseai.tracker.data.preferences.UserPreferencesRepository
 import com.pennywiseai.tracker.data.repository.AppLockRepository
 import com.pennywiseai.tracker.ui.icons.CategoryMapping
+import com.pennywiseai.tracker.util.RedactingReleaseTree
 import com.pennywiseai.tracker.utils.CurrencyFormatter
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -61,6 +63,19 @@ class PennyWiseApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Spec 04 §4.6's logging policy, planted before anything else can log. The release
+        // tree drops VERBOSE/DEBUG and pushes every surviving line through LogRedactor, so
+        // amounts and account last-4s cannot reach logcat (spec 11, AC-11-04). Debug builds
+        // keep Timber's unredacted DebugTree: that build only ever runs on a dev machine,
+        // and redacting there would make the channel's own logs unreadable while working
+        // on it.
+        //
+        // This does not silence the inherited `android.util.Log` call sites (the SMS path
+        // logs merchants, hashes and row ids). Those are removed from the release build by
+        // the -assumenosideeffects block in proguard-rules.pro; new code logs via Timber.
+        Timber.plant(if (BuildConfig.DEBUG) Timber.DebugTree() else RedactingReleaseTree())
+
         registerActivityLifecycleCallbacks(AppLockLifecycleObserver())
 
         // Initial billing-entitlement sync. No-op on F-Droid (the stub

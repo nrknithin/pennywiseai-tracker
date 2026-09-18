@@ -33,6 +33,7 @@ import com.pennywiseai.tracker.domain.engine.DedupDecision
 import com.pennywiseai.tracker.domain.engine.DedupEngine
 import com.pennywiseai.tracker.domain.engine.DedupInput
 import com.pennywiseai.tracker.domain.engine.DueMergeEngine
+import com.pennywiseai.tracker.domain.engine.DuesTimingConfig
 import com.pennywiseai.tracker.domain.engine.MessageIdentity
 import com.pennywiseai.tracker.domain.engine.MoneyDirection
 import com.pennywiseai.tracker.domain.engine.SourceFingerprint
@@ -122,24 +123,36 @@ data class IngestConfig(
  * `requireIssuerOrAccountMatch` arrive with the full scoring algorithm in M2.
  */
 data class SettlementConfig(
-    val amountToleranceAbs: BigDecimal = BigDecimal("1.00"),
-    val amountTolerancePct: BigDecimal = BigDecimal.ZERO,
-
     /**
-     * How far **ahead of** the payment a due may be dated and still be the thing that was paid —
-     * a 1 October card bill paid on 16 September (spec 20 §20.8).
+     * The span and the amount tolerance of §20.5 steps 3 and 4 — the same object
+     * [com.pennywiseai.tracker.domain.engine.DueMergeConfig] embeds, because a payment
+     * confirmation must reach exactly the bills the payment itself can settle. The accessors
+     * below are settlement's names for those figures; each is a view of [timing], so neither
+     * side of the app can be wired to `settings.dues.*` while the other keeps a default.
      */
-    val earlyPayDays: Long = 45,
-
-    /** How far **behind** the payment a due may be dated: how late the user is allowed to be. */
-    val latePayDays: Long = 60,
+    val timing: DuesTimingConfig = DuesTimingConfig(),
 
     /** Days after `due_date` that still count as on time. */
     val graceDays: Long = 0,
 
     /** Auto-pay dues debit a day or two after the printed date, so they get their own grace. */
     val autoPayGraceDays: Long = 2
-)
+) {
+    /** §20.5 step 4's `tol_abs` (1.00). */
+    val amountToleranceAbs: BigDecimal get() = timing.amountToleranceAbs
+
+    /** §20.5 step 4's `tol_pct`, in percent — applied to the billed amount only. */
+    val amountTolerancePct: BigDecimal get() = timing.amountTolerancePct
+
+    /**
+     * How far **ahead of** the payment a due may be dated and still be the thing that was paid —
+     * a 1 October card bill paid on 16 September (spec 20 §20.8).
+     */
+    val earlyPayDays: Long get() = timing.earlyPayDays
+
+    /** How far **behind** the payment a due may be dated: how late the user is allowed to be. */
+    val latePayDays: Long get() = timing.latePayDays
+}
 
 // =============================================================================================
 // Collaborator seams
@@ -1126,12 +1139,20 @@ class PlausibleDueSettler(
      *
      * A zero-amount due ("nothing due this month") matches nothing — otherwise every small payment
      * would settle it.
+     *
+     * The billed amount is matched within the absolute tolerance **or** the percentage of the bill
+     * ([DuesTimingConfig.amountTolerance]); the minimum due is matched within the absolute
+     * tolerance alone. That asymmetry is §20.5 step 4's own — it writes `tol_pct` against
+     * `due.amount` and never against the minimum — and `DueMergeEngine.confirmationScore` scores
+     * a payment *notice* the same way, so the notice and the transaction agree about which bill a
+     * payment belongs to. See [DuesTimingConfig].
      */
     private fun amountAgrees(transaction: TransactionEntity, due: DueEntity): Boolean {
         val paid = transaction.amount.abs()
-        if (due.amount.signum() > 0) {
-            val tolerance = config.amountToleranceAbs.max(due.amount.multiply(config.amountTolerancePct))
-            if ((paid - due.amount).abs() <= tolerance) return true
+        if (due.amount.signum() > 0 &&
+            (paid - due.amount).abs() <= config.timing.amountTolerance(due.amount)
+        ) {
+            return true
         }
         val minimum = due.minimumDue
         if (minimum != null && minimum.signum() > 0) {

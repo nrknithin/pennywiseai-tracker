@@ -48,6 +48,10 @@ roomVersion = "2.8.4"
 # outright. alpha06 has been the de-facto release for years and is the version the design
 # note lists as the fallback. Bumping is a one-line change if a stable ever ships.
 securityCrypto = "1.1.0-alpha06"
+# Timber, for the redacting release log tree (spec 04 §4.6, AC-11-04). 5.0.1 is the last
+# release and is Kotlin-first (`Timber.Forest`); it resolves from Maven Central, which is
+# an order of magnitude faster here than the Google CDNs.
+timber = "5.0.1"
 # litertlm >= 0.14 is compiled with -Xjvm-default=all and calls
 # SendChannel.close$default as an interface static. kotlinx-coroutines only
 # ships that static from 1.11.0 (built with jvm-default statics); app/build.gradle.kts
@@ -123,6 +127,7 @@ pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfbo
 review = { module = "com.google.android.play:review", version.ref = "review" }
 review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "reviewKtx" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
 vision-internal-vkp = { group = "com.google.mlkit", name = "vision-internal-vkp", version.ref = "visionInternalVkp" }
 

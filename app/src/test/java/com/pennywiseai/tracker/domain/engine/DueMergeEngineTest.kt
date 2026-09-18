@@ -1127,6 +1127,132 @@ class DueMergeEngineTest {
     }
 
     @Test
+    fun `a payment a few paise off the bill is still that bill`() {
+        // §20.5 step 4's `tol_abs`, which every ordering test above satisfies with an exact
+        // equality and therefore cannot see: setting `amountToleranceAbs` to zero, or deleting
+        // the tolerance from `confirmationScore` outright, left all of them green. A bank and a
+        // biller round differently, so a figure 60 paise out is the same figure — and without the
+        // tolerance nothing scores, the date alone decides, and the nearer September bill takes a
+        // payment that is plainly October's.
+        val september = statementCandidate(
+            id = 1,
+            amount = BigDecimal("2500.00"),
+            dueDate = LocalDate.of(2026, 9, 5)
+        )
+        val october = statementCandidate(
+            id = 2,
+            amount = BigDecimal("7800.00"),
+            dueDate = LocalDate.of(2026, 10, 1)
+        )
+        val paid = confirmation(amount = BigDecimal("7800.60"), paidOn = LocalDate.of(2026, 9, 15))
+
+        assertEquals(2L, engine.chooseTarget(listOf(september, october), paid)?.due?.id)
+
+        // And the width is the setting's, not a constant: at zero tolerance the paid figure
+        // agrees with nothing and the nearer date decides again.
+        val exact = DueMergeConfig(timing = DuesTimingConfig(amountToleranceAbs = BigDecimal.ZERO))
+        assertEquals(1L, engine.chooseTarget(listOf(september, october), paid, exact)?.due?.id)
+    }
+
+    @Test
+    fun `the percentage tolerance widens the match, in percent and not as a fraction`() {
+        // `amountTolerancePct` has never been anything but zero anywhere in the tests, so nothing
+        // pinned that it is read at all — nor what its units are. 1 % of a ₹50,000 statement is
+        // ₹500: a ₹400 difference fits inside that and not inside ₹1.00.
+        val september = statementCandidate(
+            id = 1,
+            amount = BigDecimal("9000.00"),
+            dueDate = LocalDate.of(2026, 9, 16)
+        )
+        val october = statementCandidate(
+            id = 2,
+            amount = BigDecimal("50000.00"),
+            dueDate = LocalDate.of(2026, 10, 1)
+        )
+        val onePercent = DueMergeConfig(timing = DuesTimingConfig(amountTolerancePct = BigDecimal.ONE))
+        val paidOn = LocalDate.of(2026, 9, 15)
+
+        val near = confirmation(amount = BigDecimal("50400.00"), paidOn = paidOn)
+        assertEquals(2L, engine.chooseTarget(listOf(september, october), near, onePercent)?.due?.id)
+
+        // Percent, not a fraction (spec 28 §28.4 ranges it 0–10 and screen 51 prints "%"): read
+        // as a fraction, "1" would be a hundredfold window and ₹2,000 adrift would still match.
+        val far = confirmation(amount = BigDecimal("52000.00"), paidOn = paidOn)
+        assertEquals(1L, engine.chooseTarget(listOf(september, october), far, onePercent)?.due?.id)
+
+        // At the default of zero the absolute tolerance alone decides, so even ₹400 is nothing.
+        assertEquals(1L, engine.chooseTarget(listOf(september, october), near)?.due?.id)
+    }
+
+    @Test
+    fun `the bill whose amount was paid beats the bill whose minimum was paid`() {
+        // The +50 and the +30 of §20.5 step 4 are a distinction, not two ways of saying "match":
+        // ₹7,800 paid against a ₹7,800 statement *is* that statement, while the same sum against
+        // a ₹15,000 statement asking ₹7,800 as its minimum is a part payment of a different bill.
+        // Collapse the two scores into one constant and the date decides instead — and the nearer
+        // date here belongs to the minimum, deliberately.
+        val billed = statementCandidate(
+            id = 1,
+            amount = BigDecimal("7800.00"),
+            dueDate = LocalDate.of(2026, 9, 20)
+        )
+        val minimum = statementCandidate(
+            id = 2,
+            amount = BigDecimal("15000.00"),
+            minimumDue = BigDecimal("7800.00"),
+            dueDate = LocalDate.of(2026, 9, 16)
+        )
+
+        val target = engine.chooseTarget(
+            listOf(minimum, billed),
+            confirmation(amount = BigDecimal("7800.00"), paidOn = LocalDate.of(2026, 9, 15))
+        )
+
+        assertEquals(1L, target?.due?.id)
+    }
+
+    @Test
+    fun `the minimum due is matched on the absolute tolerance alone`() {
+        // A deliberate asymmetry, mirrored in `PlausibleDueSettler.amountAgrees` and now recorded
+        // in `DuesTimingConfig` and FORK-CHANGES: §20.5 step 4 writes the percentage against
+        // `due.amount` and never against the minimum. 5 % of a ₹50,000 statement is ₹2,500, the
+        // whole of its minimum, so a percentage applied here would let a payment ₹100 adrift call
+        // itself that minimum and take a payment the nearer bill should have had.
+        val nearer = statementCandidate(
+            id = 1,
+            amount = BigDecimal("9000.00"),
+            dueDate = LocalDate.of(2026, 9, 16)
+        )
+        val minimum = statementCandidate(
+            id = 2,
+            amount = BigDecimal("50000.00"),
+            minimumDue = BigDecimal("2500.00"),
+            dueDate = LocalDate.of(2026, 9, 25)
+        )
+        val fivePercent = DueMergeConfig(timing = DuesTimingConfig(amountTolerancePct = BigDecimal("5")))
+        val paidOn = LocalDate.of(2026, 9, 15)
+
+        assertEquals(
+            1L,
+            engine.chooseTarget(
+                listOf(nearer, minimum),
+                confirmation(amount = BigDecimal("2600.00"), paidOn = paidOn),
+                fivePercent
+            )?.due?.id
+        )
+
+        // The branch itself still works — on `amountToleranceAbs`, which is all it ever gets.
+        assertEquals(
+            2L,
+            engine.chooseTarget(
+                listOf(nearer, minimum),
+                confirmation(amount = BigDecimal("2500.50"), paidOn = paidOn),
+                fivePercent
+            )?.due?.id
+        )
+    }
+
+    @Test
     fun `a bill dated further ahead of the payment than earlyPayDays is some other bill`() {
         // §20.5's span is asymmetric — 45 days of paying early, 60 of paying late — and the
         // confirmation window is that same span, so a bill 50 days ahead of the payment is
@@ -1350,6 +1476,20 @@ class DueMergeEngineTest {
         note = note,
         createdAt = createdAt,
         updatedAt = createdAt
+    )
+
+    /**
+     * A stored bill with one issuer statement behind it — the shape the payment-confirmation
+     * ordering tests compare, where only the amounts and the dates are the point.
+     */
+    private fun statementCandidate(
+        id: Long,
+        amount: BigDecimal,
+        dueDate: LocalDate,
+        minimumDue: BigDecimal? = null
+    ): DueMergeEngine.Candidate = DueMergeEngine.Candidate(
+        dueRow(id = id, dueId = "bill-$id", amount = amount, minimumDue = minimumDue, dueDate = dueDate),
+        listOf(source(id, AXIS_SENDER, NoticeKind.STATEMENT))
     )
 
     private fun source(

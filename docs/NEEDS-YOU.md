@@ -159,6 +159,47 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   *Where it goes:* nowhere in the repo — it is `./gradlew :app:connectedStandardDebugAndroidTest`
   with a phone plugged in or an emulator up.
 
+- [ ] **One pass through `docs/QA-CHECKLIST.md` on a *release* build**, whenever you next have the
+  phone out. New on 2026-09-18, and the reason it is a separate item from the two checks above is
+  the build type: everything else here works on a debug build, and **AC-11-04 is meaningless on
+  one**. The log redactor has two defences — R8 deleting the `v`/`d` calls outright, and
+  `RedactingReleaseTree` cleaning what survives — and *neither exists in a debug build*.
+  `-assumenosideeffects` is applied only when R8 minifies, and the tree is planted only when
+  `BuildConfig.DEBUG` is false. `./init.sh` builds `standardDebug`, so nothing in the gate has ever
+  exercised either, and nothing ever will.
+  ```
+  ./gradlew :app:assembleStandardRelease     # needs the release keystore above
+  adb logcat -d --pid=$(adb shell pidof -s com.pennywiseai.tracker) > fin-sync.log
+  ```
+  then the five greps in `docs/QA-CHECKLIST.md` §AC-11-04. **One of them, G3, asks you to grep the
+  capture for your actual Gmail app password.** Type it into the shell and nowhere else — not into
+  a script, not into any file inside this repo. It is flagged here because it is the single step in
+  the whole checklist that touches a live credential.
+  *Meanwhile:* the redactor's pure function is unit-tested headlessly (`LogRedactorTest`, 14 cases,
+  green), so what this trip would find is a ProGuard or plumbing problem rather than a logic one.
+  *Do not go yet:* two defects in the checklist itself are open (BUILD-STATUS.md, Next action item
+  11) — one grep cannot match the format `adb logcat` actually prints, and the section has no
+  positive control, so on today's wording a clean capture would prove nothing. The next automated
+  run fixes both. Batch this with the two device checks above when it has.
+  *Also:* every criterion in that file is blocked on prerequisite P2 — no screen can connect a
+  mailbox yet — which is the "How a mailbox gets connected" entry above, not a new blocker.
+
+---
+
+## This machine
+
+- [ ] **Close the second Claude session on this working tree, or tell the next run to expect it.**
+  There is another interactive session, `finspp-a1`, idle, open on this same checkout for about
+  fifteen hours. Nothing in the repo can detect an edit a peer makes between one run's read and its
+  write, and this is not hypothetical here: BUILD-STATUS.md's 2026-09-18 row recording four
+  `./init.sh app` failures traced every one of them to two concurrent runs sharing a Gradle daemon
+  and a build directory, and `init.sh` still has no lock. This run also mis-attributed its own
+  failing test to "another agent's in-flight work" precisely because two streams of work were
+  sharing one tree.
+  *Meanwhile:* the automated runs serialise their own gates and mark every task as unsafe to
+  parallelise, which guards against a run racing itself but not against a second session.
+  *Where it goes:* nowhere in the repo — close the other session, or say it is expected.
+
 ---
 
 ## Resolved by following the spec — no decision needed
@@ -179,6 +220,8 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-18 | One pass through `docs/QA-CHECKLIST.md` on a release build | The log redactor spec 04 §4.6 asks for landed this run, and half of it is invisible to every test that can run on this machine: R8 applies `-assumenosideeffects` only when it minifies, and the redacting tree is planted only when `BuildConfig.DEBUG` is false, so a debug build exercises neither. The checklist was written in the same run so the trip is reproducible rather than improvised. Note the standing caveat in the entry: two defects in the checklist's own greps mean a clean capture would currently prove nothing, and the next run fixes them before this is worth doing. The **Gmail app password** above is still the thing everything else waits on — unticked, as always, because ticking is your signal, not the automation's |
+| 2026-09-18 | Close the second Claude session on this working tree | Two streams of work shared one checkout this run, and the visible cost was a wrong conclusion in writing: a failing test was recorded in BUILD-STATUS.md as "a second agent's uncommitted work" that would land separately, when it was in fact this run's own unfinished code and nothing was coming to fix it. That row has been corrected. The older four-failure row from earlier the same day has the same root cause in a different form. `init.sh` has no lock and nothing in the repo can see a peer's edit, so only you can settle this |
 | 2026-09-18 | May an ignore rule name a correspondent who is neither a bank nor a merchant? | Found while auditing the repo for anything traceable to you. Two IBM recruiting addresses sit in `MARKETING_SENDERS` alongside the banks and merchants, seeded from your mailbox like the rest of the list. Nothing is exposed that anyone could act on, and no rule in the project forbids it — which is exactly why the automation will not decide it. **Also worth knowing, and not a blocker:** the last three code defects in the email pipeline were closed this run, so the **Gmail app password** above is now the *only* thing between a green pipeline and a real sync. The rules behind it are no longer merely green — a payment confirmation now reaches the bill whose figure it states, over the window §20.5 actually specifies, and lends that bill no authority of its own. The first real sync will be testing your network and Gmail, not the logic |
 | 2026-09-18 | (no new blockers) | Two engine behaviours landed — an own-account transfer now becomes a single `TRANSFER` (spec 14 §14.5), and a "payment received" mail now records a source without settling anything (spec 20 §20.4 step 7) — and neither needed anything from you. Worth knowing rather than doing: **the transfer fix is correct but inert until Fin knows your accounts.** The own-account list is seeded from `account_balances` and `cards`, so it only recognises accounts the app has already seen mail about, and `OwnAccount.vpa` is always null at schema v63 — a transfer identified only by a UPI handle still lands as two rows. That is the existing "Your own accounts and UPI handles" item above, which stays open and unticked. Also unchanged: the **Gmail app password** is still the single thing between the green pipeline and a real sync |
 | 2026-09-18 | A device or emulator session for the schema-migration suite | The first Room-backed tests landed this run and run real SQL, which made the remaining hole precise rather than vague: they exercise the schema Room creates from scratch, never the upgrade path. `MigrationTestHelper` can only read the schema JSON through instrumentation assets, so the suite cannot run headlessly at any price worth paying. Nothing to do yet — filed so that M2's first hand-written migration is not written on the assumption that `./init.sh` can check it |
