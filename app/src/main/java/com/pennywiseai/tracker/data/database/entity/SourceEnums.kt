@@ -106,12 +106,78 @@ enum class SyncChannel {
     ALERTS,
 
     /** Snapshot runs (M8). A log category, not a source of records. */
-    CLOUD;
+    CLOUD,
+
+    /**
+     * Sender-discovery scans (spec 11 R-11-10's other half).
+     *
+     * The counters are reused rather than added to: `fetched` = sightings peeked,
+     * `skipped` = sightings whose sender was already known, `parsed_txn` = proposals
+     * written. A log category, not a source of records — a discovery run creates no
+     * transaction, no due and no receipt, which is why the other five counters stay zero.
+     *
+     * Adding an enum value needs no migration (spec 03 §3 opening paragraph), so this is
+     * what lets screens 47 and 48 show "last scan 18 Sep · 2,000 headers · 12 new senders"
+     * without a table of its own.
+     */
+    DISCOVERY;
 
     companion object {
         val FALLBACK = EMAIL
 
         fun fromStored(value: String?): SyncChannel =
+            entries.firstOrNull { it.name == value } ?: FALLBACK
+    }
+}
+
+/**
+ * Where a `sender_overrides` row is in its life (spec 11 §11.6).
+ *
+ * Only `ACCEPTED` rejoins the R-11-03 search and the §11.6 resolution order, and only then
+ * when `is_enabled` is also set. `is_enabled` cannot carry this by itself: it is a user
+ * toggle that defaults on, so a proposal stored as `is_enabled = 1` would start widening the
+ * search before anyone approved it.
+ */
+@Serializable
+enum class SenderOverrideStatus {
+    /** Discovery found it; the owner has not decided. Nothing downstream reads it yet. */
+    PROPOSED,
+
+    /** The owner took it. Joins the search and the registry's override map. */
+    ACCEPTED,
+
+    /** The owner said no. Kept, so a later scan does not propose it all over again. */
+    DECLINED;
+
+    companion object {
+        /**
+         * The un-trusted value. A status lost in a backup round-trip must degrade to
+         * "awaiting the owner", never to "already widening the search".
+         */
+        val FALLBACK = PROPOSED
+
+        fun fromStored(value: String?): SenderOverrideStatus =
+            entries.firstOrNull { it.name == value } ?: FALLBACK
+    }
+}
+
+/** How a `sender_overrides` row got there, so screen 47 can say "found in your mail". */
+@Serializable
+enum class SenderOverrideSource {
+    /** Typed by the owner on screen 47. */
+    MANUAL,
+
+    /** Proposed by a [SyncChannel.DISCOVERY] scan. */
+    DISCOVERY;
+
+    companion object {
+        /**
+         * Provenance is a claim about evidence. With the stored value gone there is no
+         * evidence, so the row falls back to the source that carries none.
+         */
+        val FALLBACK = MANUAL
+
+        fun fromStored(value: String?): SenderOverrideSource =
             entries.firstOrNull { it.name == value } ?: FALLBACK
     }
 }

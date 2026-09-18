@@ -29,6 +29,12 @@ import java.time.Instant
  *   headers will not parse: absent from the [MailboxSession.fetch] result, present in
  *   [MailboxSession.unreadable], and — the point of the whole arrangement — costing that one
  *   message rather than the batch.
+ *
+ * It also models the two servers the discovery pass has to survive: [supportsGmailRawSearch]
+ * off is a plain IMAP server, where [MailboxSession.searchRaw] answers null and the caller
+ * falls back to the registry search alone; on, with [rawSearchHits], is a Gmail-like server
+ * that can be asked an `X-GM-RAW` question. Neither shape can download a body it was not
+ * asked for — see [peekedUids].
  */
 class FakeMailboxClient(
     var messages: List<FetchedMessage> = emptyList(),
@@ -36,10 +42,37 @@ class FakeMailboxClient(
     var connectionTest: ConnectionTest = ConnectionTest.Ok("[Gmail]/All Mail", 0, emptyList()),
     var failAfter: Int? = null,
     var failWith: () -> MailboxException = { MailboxException.Network(IOException()) },
-    var unreadableUids: Set<Long> = emptySet()
+    var unreadableUids: Set<Long> = emptySet(),
+    /**
+     * Whether this server advertises `X-GM-EXT-1`, i.e. whether it is Gmail.
+     *
+     * Default **false** — a plain IMAP server. The Gmail path has to be opted into, so a test
+     * that forgets to say which server it is running against gets the degraded one, and the
+     * silent fallback is what is exercised by accident rather than the extension.
+     */
+    var supportsGmailRawSearch: Boolean = false,
+    /**
+     * What `X-GM-RAW <query>` matches, keyed by the exact query string.
+     *
+     * A map rather than a predicate because Gmail's search language is the server's, not
+     * ours: the fake cannot evaluate `category:purchases` and must not pretend to. A test
+     * states the answer it wants for the query it will send, and an unknown query matches
+     * nothing — which is also the honest model of a query Gmail does not understand.
+     */
+    var rawSearchHits: Map<String, Set<Long>> = emptyMap(),
+    /**
+     * The From display phrase per UID, as the header carried it.
+     *
+     * It lives here and not on [MailboxMessageHeader] for the reason [SenderSighting] exists
+     * at all: that type has already thrown the phrase away. A UID with no entry models a
+     * sender that named itself nothing.
+     */
+    var displayPhrases: Map<Long, String> = emptyMap()
 ) : ImapMailboxClient {
 
     private val delivered = mutableListOf<Long>()
+
+    private val peeked = mutableListOf<Long>()
 
     /**
      * UIDs handed out by [MailboxSession.fetch], in order, across every session this client
@@ -52,6 +85,15 @@ class FakeMailboxClient(
      * write is "every UID below the watermark appears exactly once", not "no UID repeats".
      */
     val fetchedUids: List<Long> get() = delivered.toList()
+
+    /**
+     * UIDs whose envelope [MailboxSession.peekSenders] read, in order, across every session.
+     *
+     * Kept apart from [fetchedUids] because the whole bound on the discovery pass is that the
+     * two lists are different: a sender the registry does not know may appear here and must
+     * never appear there (R-11-03).
+     */
+    val peekedUids: List<Long> get() = peeked.toList()
 
     /** How many sessions have been opened — a re-run that reconnects is visible to a test. */
     var sessionsOpened: Int = 0
@@ -146,6 +188,65 @@ class FakeMailboxClient(
                 fetched += message
             }
             return fetched
+        }
+
+        /**
+         * Snapshotted at open, like the real client's read of the cached CAPABILITY list, so a
+         * test flipping the flag mid-session does not change the answer a session already gave.
+         */
+        override val supportsGmailRawSearch: Boolean =
+            this@FakeMailboxClient.supportsGmailRawSearch
+
+        override suspend fun searchRaw(
+            query: String,
+            receivedSince: Instant?,
+            limit: Int
+        ): List<Long>? {
+            // Every guard the real client applies, in the same order and with the same answer,
+            // so a test of the injection guard proves something about the phone and not only
+            // about this file.
+            if (!supportsGmailRawSearch || limit <= 0) return null
+            if (query.isBlank() || query.any { it == '\r' || it == '\n' }) return null
+
+            val hits = rawSearchHits[query].orEmpty()
+            val byUid = messages.associateBy { it.header.uid }
+            // Discovery is never watermarked, so the only bound besides `limit` is the date —
+            // and unlike searchUids there is no sinceUid branch that could switch it off.
+            val bounded = if (receivedSince == null) {
+                hits
+            } else {
+                hits.filter { uid ->
+                    val receivedAt = byUid[uid]?.header?.receivedAt
+                    receivedAt != null && !receivedAt.isBefore(receivedSince)
+                }
+            }
+
+            return MailboxUidWindow.select(bounded, sinceUid = 0L, limit = limit)
+        }
+
+        override suspend fun peekSenders(uids: List<Long>): List<SenderSighting> {
+            val byUid = messages.associateBy { it.header.uid }
+            val sightings = mutableListOf<SenderSighting>()
+            for (uid in uids) {
+                if (uid in unreadableUids) {
+                    // A From header the real client cannot parse: contained, recorded, and the
+                    // peek carries on — the same containment `fetch` gives a bad message.
+                    skipped += UnreadableMessage(uid, "MessagingException")
+                    continue
+                }
+                val message = byUid[uid] ?: continue // vanished between search and peek
+                // Deliberately NOT recorded in `delivered`. A peek is an ENVELOPE read, and
+                // `fetchedUids` has to keep meaning "bodies that came down onto the phone" —
+                // that is the assertion R-11-03 is held to when discovery widens the search.
+                peeked += uid
+                sightings += SenderSighting(
+                    uid = uid,
+                    address = message.header.from,
+                    displayPhrase = displayPhrases[uid],
+                    receivedAt = message.header.receivedAt
+                )
+            }
+            return sightings
         }
     }
 }

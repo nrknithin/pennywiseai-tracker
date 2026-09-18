@@ -127,6 +127,14 @@ internal object EmailAccountConfigCodec {
         val UID_VALIDITY = longPreferencesKey("email_uid_validity")
         val LAST_SYNC_AT = longPreferencesKey("email_last_sync_at")
         val STATE = stringPreferencesKey("email_state")
+
+        // Sender discovery. Same `email_` prefix as everything above, so "Forget all email
+        // data" drops one file and takes these with it.
+        val DISCOVERY_ENABLED = booleanPreferencesKey("email_discovery_enabled")
+        val DISCOVERY_QUERY = stringPreferencesKey("email_discovery_query")
+        val DISCOVERY_LOOKBACK_DAYS = intPreferencesKey("email_discovery_lookback_days")
+        val DISCOVERY_MAX_HEADERS = intPreferencesKey("email_discovery_max_headers")
+        val LAST_DISCOVERY_AT = longPreferencesKey("email_last_discovery_at")
     }
 
     /** Missing keys fall back to the documented default, never to zero. */
@@ -151,7 +159,13 @@ internal object EmailAccountConfigCodec {
             lastSyncedUid = prefs[Keys.LAST_SYNCED_UID] ?: defaults.lastSyncedUid,
             uidValidity = prefs[Keys.UID_VALIDITY] ?: defaults.uidValidity,
             lastSyncAt = prefs[Keys.LAST_SYNC_AT]?.let(Instant::ofEpochMilli),
-            state = EmailAccountState.fromStored(prefs[Keys.STATE])
+            state = EmailAccountState.fromStored(prefs[Keys.STATE]),
+            discoveryEnabled = prefs[Keys.DISCOVERY_ENABLED] ?: defaults.discoveryEnabled,
+            discoveryQuery = prefs[Keys.DISCOVERY_QUERY] ?: defaults.discoveryQuery,
+            discoveryLookbackDays =
+                prefs[Keys.DISCOVERY_LOOKBACK_DAYS] ?: defaults.discoveryLookbackDays,
+            discoveryMaxHeaders = prefs[Keys.DISCOVERY_MAX_HEADERS] ?: defaults.discoveryMaxHeaders,
+            lastDiscoveryAt = prefs[Keys.LAST_DISCOVERY_AT]?.let(Instant::ofEpochMilli)
         )
     }
 
@@ -171,8 +185,13 @@ internal object EmailAccountConfigCodec {
         prefs[Keys.IGNORED_SENDERS] = encodeSenders(config.ignoredSenders)
         prefs[Keys.MAX_BODY_KB] = config.maxBodyKb
         prefs[Keys.RETAIN_BODIES_DAYS] = config.retainBodiesDays
+        prefs[Keys.DISCOVERY_ENABLED] = config.discoveryEnabled
+        prefs[Keys.DISCOVERY_QUERY] = config.discoveryQuery
+        prefs[Keys.DISCOVERY_LOOKBACK_DAYS] = config.discoveryLookbackDays
+        prefs[Keys.DISCOVERY_MAX_HEADERS] = config.discoveryMaxHeaders
         writeWatermark(prefs, config.uidValidity, config.lastSyncedUid)
         writeLastSyncAt(prefs, config.lastSyncAt)
+        writeLastDiscoveryAt(prefs, config.lastDiscoveryAt)
         writeState(prefs, config.state)
     }
 
@@ -191,6 +210,15 @@ internal object EmailAccountConfigCodec {
             prefs.remove(Keys.LAST_SYNC_AT)
         } else {
             prefs[Keys.LAST_SYNC_AT] = at.toEpochMilli()
+        }
+    }
+
+    /** Null removes the key, so "never scanned" stays distinguishable from "scanned at epoch 0". */
+    fun writeLastDiscoveryAt(prefs: MutablePreferences, at: Instant?) {
+        if (at == null) {
+            prefs.remove(Keys.LAST_DISCOVERY_AT)
+        } else {
+            prefs[Keys.LAST_DISCOVERY_AT] = at.toEpochMilli()
         }
     }
 

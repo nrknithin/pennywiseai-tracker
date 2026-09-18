@@ -54,7 +54,8 @@ class IngestingEmailBatchProcessorTest {
         clock = clock,
         dueParsers = dueParsers,
         transactionParsers = transactionParsers,
-        ownAccounts = ownAccounts
+        ownAccounts = ownAccounts,
+        senderOverrides = SenderOverrides.NONE
     )
 
     /** The settings a connected mailbox has by default (spec 11 §11.2). */

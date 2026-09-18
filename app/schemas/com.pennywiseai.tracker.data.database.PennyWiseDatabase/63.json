@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 63,
-    "identityHash": "0384cadfab698edc1646456940a4e5f4",
+    "identityHash": "ee467f9dcc72146d7d06dbb997440378",
     "entities": [
       {
         "tableName": "transactions",
@@ -2699,11 +2699,114 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_due_sources_email_message_id` ON `${TABLE_NAME}` (`email_message_id`)"
           }
         ]
+      },
+      {
+        "tableName": "sender_overrides",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `address_or_domain` TEXT NOT NULL, `bank_alias` TEXT, `display_name` TEXT, `status` TEXT NOT NULL DEFAULT 'PROPOSED', `source` TEXT NOT NULL DEFAULT 'MANUAL', `is_enabled` INTEGER NOT NULL DEFAULT 1, `message_count` INTEGER NOT NULL DEFAULT 0, `first_seen_at` TEXT, `last_seen_at` TEXT, `last_discovered_at` TEXT, `created_at` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addressOrDomain",
+            "columnName": "address_or_domain",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bankAlias",
+            "columnName": "bank_alias",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'PROPOSED'"
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'MANUAL'"
+          },
+          {
+            "fieldPath": "isEnabled",
+            "columnName": "is_enabled",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "1"
+          },
+          {
+            "fieldPath": "messageCount",
+            "columnName": "message_count",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "first_seen_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSeenAt",
+            "columnName": "last_seen_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastDiscoveredAt",
+            "columnName": "last_discovered_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_sender_overrides_address_or_domain",
+            "unique": true,
+            "columnNames": [
+              "address_or_domain"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_sender_overrides_address_or_domain` ON `${TABLE_NAME}` (`address_or_domain`)"
+          },
+          {
+            "name": "index_sender_overrides_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_sender_overrides_status` ON `${TABLE_NAME}` (`status`)"
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0384cadfab698edc1646456940a4e5f4')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ee467f9dcc72146d7d06dbb997440378')"
     ]
   }
 }

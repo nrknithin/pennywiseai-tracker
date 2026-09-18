@@ -85,7 +85,53 @@ data class EmailAccountConfig(
     /** Internal: folder identity. A change means Gmail rebuilt the folder (R-11-08). */
     val uidValidity: Long = 0,
     val lastSyncAt: Instant? = null,
-    val state: EmailAccountState = EmailAccountState.NOT_CONFIGURED
+    val state: EmailAccountState = EmailAccountState.NOT_CONFIGURED,
+
+    // --- Sender discovery (spec 11 §11.2 gains five rows) --------------------------------
+    //
+    // Measured rather than guessed: on 2026-09-18, 687 messages in the mailbox's own Gmail
+    // `category:purchases` over 365 days resolved to 467 known senders and 220 unknown ones.
+    // The defaults below are the figures that measurement used, so the shipped default
+    // reproduces it instead of approximating it.
+
+    /**
+     * Master switch for the pass that widens beyond R-11-03's compiled sender list.
+     *
+     * Default on. It is a *proposal* pass — nothing it finds reaches a parser until the owner
+     * accepts it — so the cost of it being on is one weekly header scan, and the cost of it
+     * being off is the 32% of order mail nobody would ever be asked about.
+     */
+    val discoveryEnabled: Boolean = true,
+
+    /**
+     * The `X-GM-RAW` query the scan runs.
+     *
+     * Default `category:purchases` — Gmail's own classifier, which is what made the
+     * 687-vs-467 measurement possible in the first place, and which no amount of compiled
+     * sender list can replace. Advanced: the owner can widen it, and will want to, because at
+     * least one food-delivery sender sits outside this category (NEEDS-YOU.md).
+     */
+    val discoveryQuery: String = DEFAULT_DISCOVERY_QUERY,
+
+    /**
+     * How far back one scan looks, in days. 30–3650.
+     *
+     * Independent of [initialLookbackDays], and much wider by default: a year of ENVELOPEs is
+     * a few hundred kilobytes, while a year of *bodies* is what that setting exists to bound.
+     */
+    val discoveryLookbackDays: Int = DEFAULT_DISCOVERY_LOOKBACK_DAYS,
+
+    /**
+     * Hard cap on the envelope peek, 100–10000, so one scan can never be unbounded.
+     *
+     * Unlike [maxMessagesPerSync] there is no follow-up run when this is hit: discovery is
+     * not watermarked, so the next scan simply sees the same window again. Hitting the cap
+     * costs freshness at the bottom of the window, never correctness.
+     */
+    val discoveryMaxHeaders: Int = DEFAULT_DISCOVERY_MAX_HEADERS,
+
+    /** When the last scan completed. Null means none has — never a zero date. */
+    val lastDiscoveryAt: Instant? = null
 ) {
 
     /**
@@ -106,6 +152,20 @@ data class EmailAccountConfig(
     fun lookbackCutoff(now: Instant): Instant? =
         if (initialLookbackDays <= 0) null
         else now.minus(initialLookbackDays.toLong(), ChronoUnit.DAYS)
+
+    /**
+     * Oldest message one discovery scan looks at.
+     *
+     * Never null, unlike [lookbackCutoff]. "All mail" is a legitimate answer for a body sync
+     * that is bounded by a watermark afterwards; an unbounded `X-GM-RAW` search is not, since
+     * every scan starts from scratch and would re-read the whole mailbox's headers weekly.
+     * [DISCOVERY_LOOKBACK_RANGE] has no zero in it for that reason.
+     */
+    fun discoveryCutoff(now: Instant): Instant =
+        now.minus(
+            discoveryLookbackDays.coerceIn(DISCOVERY_LOOKBACK_RANGE).toLong(),
+            ChronoUnit.DAYS
+        )
 
     /**
      * Clamps every field to the range in spec 11 §11.2.
@@ -135,7 +195,10 @@ data class EmailAccountConfig(
         // would be trimmed away before an SMS could ever match it) but no ceiling.
         retainBodiesDays = retainBodiesDays.coerceAtLeast(RETAIN_BODIES_MIN_DAYS),
         lastSyncedUid = lastSyncedUid.coerceAtLeast(0L),
-        uidValidity = uidValidity.coerceAtLeast(0L)
+        uidValidity = uidValidity.coerceAtLeast(0L),
+        discoveryQuery = normaliseQuery(discoveryQuery),
+        discoveryLookbackDays = discoveryLookbackDays.coerceIn(DISCOVERY_LOOKBACK_RANGE),
+        discoveryMaxHeaders = discoveryMaxHeaders.coerceIn(DISCOVERY_MAX_HEADERS_RANGE)
     )
 
     companion object {
@@ -149,6 +212,15 @@ data class EmailAccountConfig(
         const val DEFAULT_ALERT_WINDOW_MINUTES = 30
         const val DEFAULT_MAX_BODY_KB = 64
         const val DEFAULT_RETAIN_BODIES_DAYS = 400
+
+        /** Gmail's own purchases classifier — the query the 2026-09-18 measurement used. */
+        const val DEFAULT_DISCOVERY_QUERY = "category:purchases"
+        const val DEFAULT_DISCOVERY_LOOKBACK_DAYS = 365
+        const val DEFAULT_DISCOVERY_MAX_HEADERS = 2000
+
+        /** No zero: see [discoveryCutoff] for why an unbounded scan is not offered. */
+        val DISCOVERY_LOOKBACK_RANGE: IntRange = 30..3650
+        val DISCOVERY_MAX_HEADERS_RANGE: IntRange = 100..10000
 
         /** Spec 11 §11.2 seeds these two; both are domains the registry does not compile in. */
         val DEFAULT_EXTRA_SENDERS: List<String> = listOf("godaddy.com", "pgsharp.com")
@@ -216,6 +288,22 @@ data class EmailAccountConfig(
          * are stored lower-cased and de-duplicated. Order is preserved: screen 47 E61 shows
          * them as chips in the order the user added them.
          */
+        /**
+         * Trims the discovery query, drops anything CR or LF, and falls back to the default
+         * when nothing usable is left.
+         *
+         * The newline strip is not tidiness. The query is interpolated into an IMAP command
+         * line, so a CR or LF in it is command injection into the protocol stream — and the
+         * owner can type this value. `searchRaw` refuses such a query outright as its own
+         * last line of defence; this makes sure one never gets that far, and makes sure a
+         * query emptied by the strip becomes the working default rather than a blank that
+         * silently scans nothing.
+         */
+        private fun normaliseQuery(raw: String): String =
+            raw.filterNot { it == '\r' || it == '\n' }
+                .trim()
+                .ifBlank { DEFAULT_DISCOVERY_QUERY }
+
         private fun normaliseSenders(raw: List<String>): List<String> =
             raw.asSequence()
                 .map { it.trim().lowercase() }

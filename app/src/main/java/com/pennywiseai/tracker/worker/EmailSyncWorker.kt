@@ -38,6 +38,7 @@ import com.pennywiseai.tracker.data.email.EmailCredentialStore
 import com.pennywiseai.tracker.data.email.ImapMailboxClient
 import com.pennywiseai.tracker.data.email.MailboxException
 import com.pennywiseai.tracker.data.email.MailboxSession
+import com.pennywiseai.tracker.data.email.SenderOverrides
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.time.Clock
@@ -412,6 +413,8 @@ class EmailSyncRunner @Inject constructor(
     private val syncRuns: SyncRunDao,
     /** Only for the retention sweep of spec 11 section 11.2; the log itself is the committer's. */
     private val emailMessages: EmailMessageDao,
+    /** Accepted `sender_overrides`, widening the server-side search of R-11-03 (§11.6). */
+    private val senderOverrides: SenderOverrides,
     private val clock: Clock
 ) {
 
@@ -522,10 +525,14 @@ class EmailSyncRunner @Inject constructor(
         }
 
         // Steps 6 to 9. The server does the filtering: only mail from a sender the app knows
-        // is ever downloaded (R-11-03). sender_overrides joins this union in M2; until that
-        // table exists, the registry plus the user's extra senders is the whole of it.
+        // is ever downloaded (R-11-03). Three sources make up "knows": the compiled registry,
+        // the user's `extraSenders` chips, and the `sender_overrides` rows they have accepted
+        // — which is the loop sender discovery closes. Discovery proposes a merchant, the
+        // owner accepts it, and the very next run's `OR(FROM …)` includes that domain, so the
+        // order mail is finally downloaded instead of being invisible to the phone.
         val uids = session.searchUids(
-            searchTerms = EmailSenderRegistry.searchTerms(config.extraSenders),
+            searchTerms = EmailSenderRegistry.searchTerms(config.extraSenders) +
+                senderOverrides.searchTerms(),
             sinceUid = state.report.lastUid,
             // Bounds the first run only; once there is a watermark the UID range is the
             // bound (R-11-04) and the client ignores this.

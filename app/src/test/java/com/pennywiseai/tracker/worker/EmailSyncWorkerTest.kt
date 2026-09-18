@@ -18,6 +18,7 @@ import com.pennywiseai.tracker.data.email.FakeEmailCredentialStore
 import com.pennywiseai.tracker.data.email.FakeMailboxClient
 import com.pennywiseai.tracker.data.email.FetchedMessage
 import com.pennywiseai.tracker.data.email.MailboxException
+import com.pennywiseai.tracker.data.email.SenderOverrides
 import com.pennywiseai.tracker.data.email.TEST_NOW
 import com.pennywiseai.tracker.data.email.UNRELATED_SENDER
 import com.pennywiseai.tracker.data.email.UnreadableMessage
@@ -591,6 +592,7 @@ class EmailSyncWorkerTest {
             committer = committer,
             syncRuns = syncRuns,
             emailMessages = emailMessages,
+            senderOverrides = SenderOverrides.NONE,
             clock = clock
         )
 

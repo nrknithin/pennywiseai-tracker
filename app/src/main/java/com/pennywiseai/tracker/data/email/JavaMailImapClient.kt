@@ -1,11 +1,17 @@
 package com.pennywiseai.tracker.data.email
 
 import com.pennywiseai.parser.core.email.EmailSenderRegistry
+import com.sun.mail.iap.Response
+import com.sun.mail.imap.IMAPFolder
+import com.sun.mail.imap.IMAPStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Date
+import java.util.Locale
 import java.util.Properties
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -289,6 +295,81 @@ class JavaMailImapClient @Inject constructor(
                 uids.mapNotNull { uid -> byUid[uid]?.let { toFetched(uid, it, maxBodyKb) } }
             }
 
+        /**
+         * Read from the capability list JavaMail cached at connect — no extra round trip, and
+         * no failure path. `hasCapability` can only throw if the store is already gone, and a
+         * *discovery* feature that made an ordinary sync throw would be a far worse bug than
+         * one that quietly decides this server is not Gmail.
+         */
+        override val supportsGmailRawSearch: Boolean =
+            runCatching { (folder.store as? IMAPStore)?.hasCapability(GMAIL_EXT) == true }
+                .getOrDefault(false)
+
+        override suspend fun searchRaw(
+            query: String,
+            receivedSince: Instant?,
+            limit: Int
+        ): List<Long>? = withContext(Dispatchers.IO) {
+            // Null, not empty: this server was never asked (see the interface KDoc).
+            if (!supportsGmailRawSearch || limit <= 0) return@withContext null
+            // A blank query is an X-GM-RAW that matches the whole mailbox, and CR or LF in it
+            // is command injection into the protocol stream — a second IMAP command smuggled
+            // onto the wire under this session's authentication. Rejected rather than escaped:
+            // there is no legitimate newline in a Gmail search query, so refusing is free.
+            if (query.isBlank() || query.any { it == '\r' || it == '\n' }) return@withContext null
+
+            // JavaMail has no SearchTerm for X-GM-RAW, so the command is written by hand. This
+            // is the only place in the app that speaks IMAP directly.
+            val imap = folder as? IMAPFolder ?: return@withContext null
+            val raw = mapErrors(mailbox) {
+                imap.doCommand { protocol ->
+                    val since = receivedSince?.let { "SINCE " + IMAP_DATE.format(it) + " " }.orEmpty()
+                    // UID SEARCH, not SEARCH: the numbers that come back have to be UIDs, or
+                    // they would be sequence numbers silently compared against a UID window.
+                    val command = "UID SEARCH " + since + "X-GM-RAW " + quoteImap(query)
+                    val responses: Array<Response>? = protocol.command(command, null)
+                    val uids = parseSearchResponse(responses)
+                    // Untagged EXISTS / EXPUNGE / RECENT can ride along on any command. Handing
+                    // them back to JavaMail keeps the folder's own view of the mailbox honest;
+                    // it reads no body and sets no flag, so R-11-02 is untouched.
+                    if (responses != null) protocol.notifyResponseHandlers(responses)
+                    uids
+                } as? List<*>
+            } ?: return@withContext null
+
+            // Same window arithmetic as searchUids: ascending, de-duplicated, non-positive
+            // dropped. sinceUid is 0 because discovery is not watermarked — it neither reads
+            // settings.email.lastSyncedUid nor may advance it (R-11-07).
+            MailboxUidWindow.select(raw.filterIsInstance<Long>(), sinceUid = 0L, limit = limit)
+        }
+
+        override suspend fun peekSenders(uids: List<Long>): List<SenderSighting> =
+            withContext(Dispatchers.IO) {
+                if (uids.isEmpty()) return@withContext emptyList<SenderSighting>()
+
+                val messages = mapErrors(mailbox) { uidFolder.getMessagesByUID(uids.toLongArray()) }
+                    ?.filterNotNull()
+                    .orEmpty()
+                if (messages.isEmpty()) return@withContext emptyList<SenderSighting>()
+
+                // ENVELOPE + UID and nothing else. Not CONTENT_INFO, which fetch() needs for
+                // attachment names, and emphatically not a body part: RFC 3501 sets \Seen on a
+                // `BODY[…]` fetch, and this session is the owner's real mailbox (R-11-02 / C2).
+                mapErrors(mailbox) { folder.fetch(messages.toTypedArray(), envelopeProfile()) }
+
+                val byUid = HashMap<Long, Message>(messages.size)
+                for (message in messages) {
+                    val uid = perMessage(uid = null) { uidFolder.getUID(message) } ?: continue
+                    if (uid > 0) byUid[uid] = message
+                }
+
+                // Ordered by the caller's list; a UID the server no longer has, and one whose
+                // From header will not parse, are absent rather than a hole or an exception.
+                uids.mapNotNull { uid ->
+                    byUid[uid]?.let { message -> perMessage(uid) { sightingOf(uid, message) } }
+                }
+            }
+
         /** One message, or null when it was skipped — see [perMessage] for which is which. */
         private fun toFetched(uid: Long, message: Message, maxBodyKb: Int): FetchedMessage? {
             // Contained per message. Spec 02 §2.7 grants that to a parser that throws on one
@@ -345,6 +426,19 @@ class JavaMailImapClient @Inject constructor(
             add(UIDFolder.FetchProfileItem.UID)
         }
 
+        /**
+         * [peekSenders]'s profile: who sent it and when, and nothing else.
+         *
+         * Deliberately [fetchProfile] minus FLAGS and minus CONTENT_INFO. It is not a smaller
+         * version of the same request — it is the boundary that keeps a widened *search* from
+         * becoming a widened *download*: discovery peeks senders the registry has never heard
+         * of, and this profile is why doing so cannot pull their mail onto the phone.
+         */
+        private fun envelopeProfile(): FetchProfile = FetchProfile().apply {
+            add(FetchProfile.Item.ENVELOPE)
+            add(UIDFolder.FetchProfileItem.UID)
+        }
+
         private fun orFrom(terms: List<String>): SearchTerm {
             val from = terms.map { FromStringTerm(it) as SearchTerm }
             // An OrTerm of one is legal but some servers answer it oddly; send the bare term.
@@ -357,6 +451,19 @@ class JavaMailImapClient @Inject constructor(
         private const val TIMEOUT_MS = "25000"
         private const val FETCH_SIZE = "65536"
         private const val TLS_PROTOCOLS = "TLSv1.2 TLSv1.3"
+
+        /** Gmail's CAPABILITY advertisement for X-GM-RAW, X-GM-MSGID, X-GM-THRID and X-GM-LABELS. */
+        private const val GMAIL_EXT = "X-GM-EXT-1"
+
+        /**
+         * RFC 3501 `date-text` for a SEARCH key: `1-Sep-2026`, one or two digits for the day.
+         *
+         * Locale.US because the month is a fixed protocol token, not a display date — a phone
+         * in a Hindi or Turkish locale must still send `Sep`. UTC because IMAP compares the
+         * server's own INTERNALDATE against it and the phone's zone is not a factor.
+         */
+        private val IMAP_DATE: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("d-MMM-uuuu", Locale.US).withZone(ZoneOffset.UTC)
     }
 }
 
@@ -433,6 +540,113 @@ internal fun headerOf(uid: Long, message: Message): MailboxMessageHeader {
         subject = message.subject.orEmpty(),
         receivedAt = receivedAt
     )
+}
+
+/**
+ * The same envelope as [SenderSighting]: the sender, the phrase they gave themselves, and
+ * when the server received it. No subject and no body — a sighting is evidence about a
+ * sender, and must not be able to carry the content of the owner's mail.
+ *
+ * Not a variant of [headerOf], and that is the point. `headerOf` normalises `From` down to a
+ * bare address and drops the display phrase; there is no way back from `bigbasket.com` to
+ * `BigBasket`, so a discovery screen built on `MailboxMessageHeader` could only ever label
+ * rows by domain. This reads `InternetAddress.getPersonal()` — already RFC 2047 decoded by
+ * JavaMail — beside the address, and hands both on untouched. Deciding whether the phrase is
+ * a *name* is `SenderDisplayName`'s job in `:parser-core`, because that is regex text
+ * handling and CLAUDE.md constraint 5 keeps it out of `:app`.
+ *
+ * Every read here can throw on a malformed header, so callers wrap it in [readOneMessage].
+ */
+internal fun sightingOf(uid: Long, message: Message): SenderSighting {
+    val rawFrom = message.from?.firstOrNull()
+    val internet = rawFrom as? InternetAddress
+    val address = internet?.address ?: rawFrom?.toString()
+    // Normalised exactly as headerOf normalises, so a domain discovery proposes is the same
+    // string EmailSenderRegistry.resolve will later be asked about.
+    val normalised = EmailSenderRegistry.normaliseAddress(address)
+        ?: address?.trim()?.lowercase()
+        ?: ""
+    // Blank is not a phrase. A group address or a header JavaMail could not parse into an
+    // InternetAddress has no personal part at all, and null there means "the sender named
+    // nothing" — never a name reconstructed from the address (spec 01 constraint C7).
+    val phrase = internet?.personal?.trim()?.takeIf { it.isNotEmpty() }
+    // INTERNALDATE first, sentDate second, and — for the reason headerOf documents — `now`
+    // only for a message carrying no date at all, which RFC 3501 makes unreachable against a
+    // real server. firstSeen/lastSeen are built from this and from nothing else.
+    val receivedAt = (message.receivedDate ?: message.sentDate)?.toInstant() ?: Instant.now()
+    return SenderSighting(
+        uid = uid,
+        address = normalised,
+        displayPhrase = phrase,
+        receivedAt = receivedAt
+    )
+}
+
+/**
+ * The untagged `* SEARCH 12 34 56` lines of a `UID SEARCH` response, as UIDs.
+ *
+ * File-level `internal` for the reason [readOneMessage] is: the rule is about parsing a
+ * protocol response, not about folders, so it is testable without standing up a `Folder`.
+ *
+ * A non-OK **tagged** response yields an empty list rather than throwing — a server that
+ * declines the query has told us there are no candidates, and discovery is optional. That is
+ * also why a `NO` is not an error: Gmail answers `NO` to an `X-GM-RAW` it dislikes, and a
+ * malformed saved query must cost one skipped scan, never a failed sync.
+ *
+ * Numbers stop at the first token that is not a digit run, so the `(MODSEQ 1234)` that a
+ * CONDSTORE server appends to `* SEARCH` is ignored rather than read as a UID. `* ESEARCH`
+ * and every other untagged line is ignored outright: only `SEARCH` is claimed.
+ */
+internal fun parseSearchResponse(responses: Array<Response>?): List<Long> {
+    if (responses == null) return emptyList()
+
+    val uids = mutableListOf<Long>()
+    // filterNotNull rather than a null check in the loop: the parameter is declared with
+    // non-null elements, so the check would read as dead code, and JavaMail hands this array
+    // back from Java where the element type is a platform type and a null is still possible.
+    for (response in responses.filterNotNull()) {
+        if (response.isTagged) {
+            // The tagged line terminates the command. NO or BAD means the server refused, and
+            // anything already collected came from a command that did not complete.
+            if (!response.isOK) return emptyList()
+            continue
+        }
+        if (!response.isUnTagged) continue
+
+        // parse() left `pindex` just past the `*`, so reset() puts the cursor on the key.
+        response.reset()
+        if (!"SEARCH".equals(response.readAtom(), ignoreCase = true)) continue
+
+        // readLong answers -1 without advancing once the next token is not a digit run, so
+        // this terminates on `(MODSEQ …)`, on trailing spaces and at end of line alike.
+        while (true) {
+            val uid = response.readLong()
+            if (uid < 0) break
+            uids += uid
+        }
+    }
+    return uids
+}
+
+/**
+ * [value] as an RFC 3501 quoted string: wrapped in double quotes, with `\` and `"`
+ * backslash-escaped.
+ *
+ * The escaping is not cosmetic. An unescaped `"` inside the query would close the string
+ * early and let the rest of it be read as further SEARCH keys — the same class of mistake as
+ * an unescaped quote in SQL, against a session already authenticated as the owner. CR and LF
+ * cannot be escaped into safety at all, which is why `searchRaw` refuses them upstream rather
+ * than passing them here.
+ */
+internal fun quoteImap(value: String): String {
+    val escaped = StringBuilder(value.length + 2)
+    escaped.append('"')
+    for (character in value) {
+        if (character == '\\' || character == '"') escaped.append('\\')
+        escaped.append(character)
+    }
+    escaped.append('"')
+    return escaped.toString()
 }
 
 /**

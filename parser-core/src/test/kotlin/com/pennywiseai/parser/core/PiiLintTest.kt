@@ -400,6 +400,10 @@ class PiiLintTest {
         ForkPath("app/src/main/java/com/pennywiseai/tracker/data/database"),
         ForkPath("app/src/main/java/com/pennywiseai/tracker/data/backup"),
         ForkPath("app/src/main/java/com/pennywiseai/tracker/domain/engine"),
+        // Shared with upstream, listed whole for the same reason as data/database: the fork's
+        // DiscoverSendersUseCase lives here and must not fall out of the scan.
+        ForkPath("app/src/main/java/com/pennywiseai/tracker/domain/usecase"),
+        ForkPath("app/src/test/java/com/pennywiseai/tracker/domain/usecase"),
         ForkPath("app/src/main/java/com/pennywiseai/tracker/worker"),
         ForkPath("app/src/main/java/com/pennywiseai/tracker/di"),
         ForkPath("app/src/main/java/com/pennywiseai/tracker/cloud", pending = true),

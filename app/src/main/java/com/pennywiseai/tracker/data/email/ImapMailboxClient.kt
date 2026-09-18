@@ -23,6 +23,22 @@ data class MailboxMessageHeader(
     val receivedAt: Instant
 )
 
+/**
+ * One sighting of a sender, from an ENVELOPE-only peek. Deliberately NOT a
+ * [MailboxMessageHeader]: that type normalises the From header down to a bare address and
+ * throws the display phrase away, and the phrase is the whole point of discovery.
+ * No subject, no body — this record cannot carry the content of the owner's mail.
+ */
+data class SenderSighting(
+    val uid: Long,
+    /** Bare lower-cased address, through `EmailSenderRegistry.normaliseAddress`. */
+    val address: String,
+    /** The From header's display phrase as sent (RFC 2047 already decoded), or null when absent. */
+    val displayPhrase: String?,
+    /** INTERNALDATE. Feeds firstSeen/lastSeen; never a date read out of a body. */
+    val receivedAt: Instant
+)
+
 /** A header plus its already-extracted body — see [MailboxMessageHeader] for why the body is not lazy. */
 data class FetchedMessage(val header: MailboxMessageHeader, val body: ExtractedBody)
 
@@ -128,8 +144,53 @@ interface MailboxSession {
     suspend fun fetch(uids: List<Long>, maxBodyKb: Int): List<FetchedMessage>
 
     /**
+     * True when the server advertised `X-GM-EXT-1` in its CAPABILITY response.
+     *
+     * Read once at open from the already-cached capability list — no extra round trip.
+     * False on every non-Gmail IMAP server, and false rather than throwing if the
+     * capability list cannot be read at all: a discovery feature must never be able to
+     * fail a sync.
+     */
+    val supportsGmailRawSearch: Boolean
+
+    /**
+     * UIDs matching a Gmail raw query (`UID SEARCH [SINCE <date>] X-GM-RAW "<query>"`),
+     * ascending, capped at [limit].
+     *
+     * Returns **null** when [supportsGmailRawSearch] is false — not an empty list.
+     * The distinction is load-bearing and is spec 01 constraint C7 applied to a
+     * capability: `emptyList()` means "this server was asked and matched nothing",
+     * `null` means "this server cannot be asked", and the two produce different UI
+     * ("no new senders" vs "discovery needs Gmail"). Collapsing them would report a
+     * clean scan that never happened.
+     *
+     * [query] must contain no CR or LF: it is interpolated into an IMAP command line,
+     * and a newline there is command injection into the protocol stream. The
+     * implementation rejects such a query by returning null rather than sending it.
+     * Quoting of `"` and `\` is the implementation's job, not the caller's.
+     *
+     * READ_ONLY-safe by construction: `UID SEARCH` reads no body and sets no flag, so
+     * constraint C2 holds for the same reason it holds for [searchUids].
+     */
+    suspend fun searchRaw(query: String, receivedSince: Instant?, limit: Int): List<Long>?
+
+    /**
+     * ENVELOPE-only fetch: who sent it and when, never what it said.
+     *
+     * One FETCH round trip with `FetchProfile.Item.ENVELOPE` + UID — the same profile step 8
+     * already uses minus CONTENT_INFO — and explicitly **not** `BODY[]`, which is the
+     * flag-setting fetch constraint C2 forbids. `BODY.PEEK` is not needed because no body
+     * part is requested at all: `ENVELOPE` is a parsed-header item, and RFC 3501 sets
+     * `\Seen` only for a `BODY[…]` section fetch.
+     *
+     * A UID that vanished between search and peek is simply absent, as in [fetch]; a
+     * header that will not parse is contained per message and filed under [unreadable].
+     */
+    suspend fun peekSenders(uids: List<Long>): List<SenderSighting>
+
+    /**
      * Messages this session skipped rather than returned, oldest first, accumulated across
-     * every [searchUids] and [fetch] call it has served.
+     * every [searchUids], [fetch] and [peekSenders] call it has served.
      *
      * Empty for a clean run. A non-empty list is not an error the worker retries — the
      * messages are gone for this run either way — but each entry is a row the Email Log
@@ -196,4 +257,56 @@ object MailboxUidWindow {
             .take(limit)
             .toList()
     }
+}
+
+/**
+ * The candidate UID set for one sender-discovery pass: Gmail's own classification of the
+ * mailbox unioned with the senders the registry already knows — or, on a server that cannot
+ * be asked the first question, the registry's answer alone.
+ *
+ * **Why the union is here and not inside [MailboxSession.searchUids].** That method decides
+ * what gets *downloaded*: every UID it returns is handed to [MailboxSession.fetch], which
+ * pulls a body. Folding `X-GM-RAW category:purchases` into it would put ~700 bodies a year
+ * from senders nobody has approved onto the phone, which is precisely what R-11-03 exists to
+ * stop, and it would do so under a watermark that is only safe to advance over a contiguous
+ * range the sync fetched itself (R-11-07). Discovery unions the two searches and then peeks
+ * *envelopes* ([MailboxSession.peekSenders]), so the widened search stays a widened search
+ * and never becomes a widened download.
+ *
+ * **Why the registry search is in the union at all**, when discovery is looking for senders
+ * the registry does not know: so that the pass measures the same corpus on both kinds of
+ * server, and so that known senders Gmail files outside the query — the measurement found
+ * Swiggy sitting outside `category:purchases` — still appear as sightings and land in the
+ * report's known count rather than silently vanishing from the denominator.
+ *
+ * [sinceUid] is deliberately absent: discovery is not watermarked, reads nothing from
+ * `settings.email.lastSyncedUid` and writes nothing to it. It is bounded by [receivedSince]
+ * and [limit] instead, and re-scans the same window every time it runs.
+ *
+ * @return ascending, de-duplicated, capped at [limit] — the same window arithmetic both
+ *   searches already applied, re-applied because the union of two capped lists is not itself
+ *   capped.
+ */
+internal suspend fun MailboxSession.discoveryCandidateUids(
+    searchTerms: List<String>,
+    rawQuery: String,
+    receivedSince: Instant?,
+    limit: Int
+): List<Long> {
+    if (limit <= 0) return emptyList()
+
+    val registry = searchUids(
+        searchTerms = searchTerms,
+        sinceUid = 0L,
+        receivedSince = receivedSince,
+        limit = limit
+    )
+
+    // Null, not empty: the server has no X-GM-EXT-1 and was never asked. Falling back to the
+    // registry alone is silent on purpose — a plain IMAP server is a supported configuration,
+    // not a failure — and it is the caller, holding the same null from
+    // `MailboxSession.searchRaw`, that decides whether the *screen* should say so.
+    val raw = searchRaw(rawQuery, receivedSince, limit) ?: return registry
+
+    return MailboxUidWindow.select(registry + raw, sinceUid = 0L, limit = limit)
 }

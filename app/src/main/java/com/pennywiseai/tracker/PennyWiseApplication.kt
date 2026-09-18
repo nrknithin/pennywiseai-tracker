@@ -114,10 +114,26 @@ class PennyWiseApplication : Application(), Configuration.Provider {
         // does not.
         applicationScope.launch {
             try {
+                val emailConfig = emailAccountConfigStore.current()
                 com.pennywiseai.tracker.worker.EmailSyncWorker.enqueuePeriodic(
                     this@PennyWiseApplication,
-                    emailAccountConfigStore.current()
+                    emailConfig
                 )
+                // The weekly sender-discovery scan (spec 11 §11.6). Own work, not a passenger
+                // on the sync above — see SenderDiscoveryWorker's KDoc for the cadence, the
+                // watermark and the failure-isolation reasons. Armed here for the same reason
+                // the sync is, and cancelled here rather than left running when the owner
+                // switches discovery off, so an unscheduled week does not need a launch.
+                if (emailConfig.discoveryEnabled) {
+                    com.pennywiseai.tracker.worker.SenderDiscoveryWorker.schedule(
+                        this@PennyWiseApplication,
+                        emailConfig
+                    )
+                } else {
+                    com.pennywiseai.tracker.worker.SenderDiscoveryWorker.cancel(
+                        this@PennyWiseApplication
+                    )
+                }
             } catch (e: Exception) {
                 // A schedule that cannot be written is not worth crashing the app for: the
                 // next process start tries again, and "Sync now" still works meanwhile.

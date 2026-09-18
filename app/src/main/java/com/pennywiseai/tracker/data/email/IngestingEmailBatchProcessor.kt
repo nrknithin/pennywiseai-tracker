@@ -104,7 +104,8 @@ class IngestingEmailBatchProcessor @Inject constructor(
     private val clock: Clock,
     private val dueParsers: DueParsing,
     private val transactionParsers: TransactionParsing,
-    private val ownAccounts: OwnAccountSource
+    private val ownAccounts: OwnAccountSource,
+    private val senderOverrides: SenderOverrides
 ) : EmailBatchProcessor {
 
     override suspend fun process(
@@ -136,10 +137,14 @@ class IngestingEmailBatchProcessor @Inject constructor(
             ownAccounts = ownAccounts.ownAccounts()
         ),
         ignoredSenders = config.ignoredSenders,
-        // `sender_overrides` is an M2 table with an M2 editor (spec 11 §11.6, screen 47). The
-        // empty map is not a guess: it is what `EmailSenderRegistry` is handed when no override
-        // exists, and it resolves the sender from the compiled registry alone.
-        senderOverrides = emptyMap()
+        // Spec 11 §11.6's overrides, consulted before the compiled registry. `sender_overrides`
+        // came forward to v63 with sender discovery, so this is no longer the empty map it was:
+        // a sender the owner accepted on screen 47 is resolved through their row, which is what
+        // gives a discovered merchant a name and — where they supplied one — an SMS alias.
+        //
+        // Read per batch, like [ownAccounts] and for the same reason: a sender accepted while a
+        // sync is in flight is honoured by the next batch rather than the next run.
+        senderOverrides = senderOverrides.mappings()
     )
 
     private fun ingestorFor(config: IngestConfig): EmailTransactionIngestor =

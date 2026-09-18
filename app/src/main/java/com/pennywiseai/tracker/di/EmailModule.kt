@@ -5,6 +5,7 @@ import com.pennywiseai.tracker.data.database.PennyWiseDatabase
 import com.pennywiseai.tracker.data.database.dao.DueDao
 import com.pennywiseai.tracker.data.database.dao.DueSourceDao
 import com.pennywiseai.tracker.data.database.dao.EmailMessageDao
+import com.pennywiseai.tracker.data.database.dao.SenderOverrideDao
 import com.pennywiseai.tracker.data.database.dao.SyncRunDao
 import com.pennywiseai.tracker.data.database.dao.TransactionSourceDao
 import com.pennywiseai.tracker.data.email.DataStoreEmailAccountConfigStore
@@ -28,9 +29,11 @@ import com.pennywiseai.tracker.data.email.ProcessorTransactionSaver
 import com.pennywiseai.tracker.data.email.RoomEmailBatchCommitter
 import com.pennywiseai.tracker.data.email.RoomOwnAccountSource
 import com.pennywiseai.tracker.data.email.RoomTransactionStore
+import com.pennywiseai.tracker.data.email.SenderOverrides
 import com.pennywiseai.tracker.data.email.TransactionParsing
 import com.pennywiseai.tracker.data.email.TransactionStore
 import com.pennywiseai.tracker.data.repository.DueRepository
+import com.pennywiseai.tracker.data.repository.SenderOverrideRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -134,6 +137,16 @@ abstract class EmailModule {
     abstract fun bindOwnAccountSource(source: RoomOwnAccountSource): OwnAccountSource
 
     /**
+     * Spec 11 section 11.6's accepted overrides, as the two questions the sync path asks of
+     * them. Bound as the narrow interface rather than injecting `SenderOverrideRepository`
+     * directly, so `EmailSyncRunner` and `IngestingEmailBatchProcessor` can still be built in
+     * a JVM unit test with `SenderOverrides.NONE` and no Room.
+     */
+    @Binds
+    @Singleton
+    abstract fun bindSenderOverrides(repository: SenderOverrideRepository): SenderOverrides
+
+    /**
      * Steps b and d/e's parsers. `FactoryDueParsing` needs nothing and says so with an
      * `@Inject` constructor, so it binds; `FactoryTransactionParsing` carries an
      * `EmailParserFactory` Hilt cannot construct and is provided below.
@@ -183,6 +196,21 @@ abstract class EmailModule {
         @Singleton
         fun provideTransactionSourceDao(database: PennyWiseDatabase): TransactionSourceDao =
             database.transactionSourceDao()
+
+        /**
+         * Spec 03 §3.3's `sender_overrides`, brought forward to v63 for sender discovery.
+         *
+         * Everything above this line in the discovery graph needs no binding of its own:
+         * `SenderDiscovery`, `SenderOverrideRepository` and `DiscoverSendersUseCase` all
+         * carry `@Inject` constructors over types Hilt already knows, and
+         * `SenderDiscoveryWorker` is `@HiltWorker`, so `HiltWorkerFactory` constructs it.
+         * This `@Provides` is the one edge Dagger cannot infer, because a DAO comes from an
+         * abstract method on the database rather than from a constructor.
+         */
+        @Provides
+        @Singleton
+        fun provideSenderOverrideDao(database: PennyWiseDatabase): SenderOverrideDao =
+            database.senderOverrideDao()
 
         /**
          * Step h's settlement (spec 11 section 11.4, spec 20 section 20.5).

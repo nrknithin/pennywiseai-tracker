@@ -77,3 +77,17 @@ internal fun testConfig(
     maxMessagesPerSync = maxMessagesPerSync,
     batchSize = batchSize
 )
+
+/**
+ * A merchant no registry term matches — the kind of sender discovery exists to find.
+ *
+ * `example.net`, not a real shop: `PiiLintTest` allows the reserved example domains and the
+ * registry's own institutions, and a discovered sender is by definition neither.
+ */
+internal const val MERCHANT_SENDER = "orders@shop.example.net"
+
+/** A second address under the same merchant domain, so a group has something to group. */
+internal const val MERCHANT_SENDER_ALT = "noreply@shop.example.net"
+
+/** The shipped `X-GM-RAW` default: Gmail's own classification of the mailbox. */
+internal const val TEST_DISCOVERY_QUERY = "category:purchases"
