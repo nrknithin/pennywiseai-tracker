@@ -190,6 +190,25 @@ class DueRepositoryTest {
     }
 
     @Test
+    fun `the better-described card bill wins, not the earlier-dated one`() = runBlocking {
+        // The same contest as the test above, reached through the *card* branch rather than the
+        // reference one. Two readings of one statement a day apart — the issuer's own and an
+        // aggregator's, which do not agree on the date — and the query that finds them returns
+        // both. While it was `LIMIT 1` over `due_date ASC` this could not happen: SQL answered
+        // "30 September" and §20.4 step 4 was never consulted about a card bill at all.
+        val thin = dueDao.seed(storedDue(dueId = "stored-key-a", dueDate = LocalDate.of(2026, 9, 30)))
+        val fat = dueDao.seed(storedDue(dueId = "stored-key-b", dueDate = LocalDate.of(2026, 10, 1)))
+        noticeFor(fat.id, AXIS_SENDER)
+        noticeFor(fat.id, CRED_SENDER)
+        noticeFor(thin.id, CRED_SENDER)
+
+        val result = repository.upsertFromParsed(credNotice(), emailMessageId = 7)
+
+        assertEquals(fat.id, result.dueRowId)
+        assertEquals(2, dueDao.rows.size)
+    }
+
+    @Test
     fun `ties go to the earliest created`() = runBlocking {
         val later = dueDao.seed(
             renewalDue(dueId = "stored-key-a", createdAt = LocalDateTime.of(2026, 9, 16, 9, 0))
@@ -212,7 +231,7 @@ class DueRepositoryTest {
     @Test
     fun `a settled due absorbs the notice without changing`() = runBlocking {
         // The bill created this row, a payment settled it, and now the mail is re-processed.
-        // `DueDao.findMergeCandidate` only sees OPEN rows, so it is the key that finds this one.
+        // `DueDao.findMergeCandidates` only sees OPEN rows, so it is the key that finds this one.
         val settled = dueDao.seed(
             storedDue(
                 dueId = engine.dueId(statement()),
@@ -332,6 +351,39 @@ class DueRepositoryTest {
         assertEquals(bill.dueRowId, notice?.dueRowId)
         assertFalse(notice!!.created)
         assertEquals(1, dueDao.rows.size)
+    }
+
+    @Test
+    fun `a payment confirmation reaches the nearer bill, not the oldest one open`() = runBlocking {
+        // The case the ±60-day window of step 7 exists for, and the one it used to get wrong.
+        // August's statement is still OPEN because it was paid from an account Fin cannot see;
+        // October's is the bill this confirmation cleared. Both sit inside the window the
+        // confirmation opens — [30 Jul, 27 Nov] around 28 September — so production has to hand
+        // `chooseTarget` both rows and let §20.4 step 4's nearest-bill ordering decide.
+        //
+        // Every other signal points the wrong way on purpose: August is first by `due_date ASC`,
+        // which is what the old `LIMIT 1` query returned, and it is also the row with the most
+        // sources, which is what step 4 would prefer for a *bill*. Only the payment-confirmation
+        // ordering reaches October, so this test fails for the right reason if either the query
+        // narrows again or the engine's step-7 branch is lost.
+        val august = dueDao.seed(storedDue(dueId = "stored-key-aug", dueDate = LocalDate.of(2026, 8, 5)))
+        val october = dueDao.seed(storedDue(dueId = "stored-key-oct", dueDate = LocalDate.of(2026, 10, 1)))
+        noticeFor(august.id, AXIS_SENDER)
+        noticeFor(august.id, CRED_SENDER)
+
+        val notice = repository.mergeIntoExisting(
+            paymentConfirmation(paidOn = LocalDate.of(2026, 9, 28)),
+            emailMessageId = 8
+        )
+
+        assertEquals(october.id, notice?.dueRowId)
+        assertFalse(notice!!.created)
+        // The ingestor hangs the PAYMENT_CONFIRMED source on the id this returns (spec 26's
+        // UNMATCHED_PAYMENT_NOTICE reads it back), so landing on August would both credit the
+        // wrong bill and leave October looking unpaid.
+        assertEquals(2, dueDao.rows.size)
+        assertTrue(dueDao.updates.isEmpty())
+        assertEquals(LocalDate.of(2026, 8, 5), dueDao.rows.getValue(august.id).dueDate)
     }
 
     @Test
@@ -520,14 +572,22 @@ private class FakeDueRowDao : DueDao {
     override suspend fun findSettlementCandidates(from: LocalDate, to: LocalDate): List<DueEntity> =
         unused("findSettlementCandidates")
 
-    /** The SQL of `DueDao.findMergeCandidate`, re-stated: OPEN only, one row, date-ordered. */
-    override suspend fun findMergeCandidate(
+    /**
+     * The SQL of `DueDao.findMergeCandidates`, re-stated: OPEN only, **every** row in the
+     * window, ordered `due_date ASC, id ASC`.
+     *
+     * It used to end `minByOrNull { it.dueDate }`, faithfully restating a `LIMIT 1` query — and
+     * faithfully restating its defect, which is why the suite could not see that production
+     * never handed `chooseTarget` a choice. A fake that narrows what the database returns hides
+     * exactly the bugs the repository exists to avoid, so this one narrows nothing.
+     */
+    override suspend fun findMergeCandidates(
         kind: StoredDueKind,
         issuer: String,
         accountLast4: String?,
         fromDate: LocalDate,
         toDate: LocalDate
-    ): DueEntity? = rows.values
+    ): List<DueEntity> = rows.values
         .filter {
             it.status == DueStatus.OPEN &&
                 it.kind == kind &&
@@ -535,7 +595,7 @@ private class FakeDueRowDao : DueDao {
                 it.accountLast4 == accountLast4 &&
                 !it.dueDate.isBefore(fromDate) && !it.dueDate.isAfter(toDate)
         }
-        .minByOrNull { it.dueDate }
+        .sortedWith(compareBy({ it.dueDate }, { it.id }))
 
     override suspend fun getSettledBy(transactionId: Long): DueEntity? =
         rows.values.firstOrNull { it.settledTransactionId == transactionId }

@@ -584,19 +584,22 @@ internal class FakeDueDao(initial: List<DueEntity> = emptyList()) : DueDao {
             .filter { it.status == DueStatus.OPEN && !it.dueDate.isBefore(from) && !it.dueDate.isAfter(to) }
             .sortedBy { it.dueDate }
 
-    override suspend fun findMergeCandidate(
+    /** The whole candidate set (spec 20 §20.4 step 2), ordered as the SQL orders it. */
+    override suspend fun findMergeCandidates(
         kind: DueKind,
         issuer: String,
         accountLast4: String?,
         fromDate: LocalDate,
         toDate: LocalDate
-    ): DueEntity? = rows.values.firstOrNull {
-        it.status == DueStatus.OPEN &&
-            it.kind == kind &&
-            it.issuer.equals(issuer, ignoreCase = true) &&
-            it.accountLast4 == accountLast4 &&
-            !it.dueDate.isBefore(fromDate) && !it.dueDate.isAfter(toDate)
-    }
+    ): List<DueEntity> = rows.values
+        .filter {
+            it.status == DueStatus.OPEN &&
+                it.kind == kind &&
+                it.issuer.equals(issuer, ignoreCase = true) &&
+                it.accountLast4 == accountLast4 &&
+                !it.dueDate.isBefore(fromDate) && !it.dueDate.isAfter(toDate)
+        }
+        .sortedWith(compareBy({ it.dueDate }, { it.id }))
 
     override suspend fun getSettledBy(transactionId: Long): DueEntity? =
         rows.values.firstOrNull { it.settledTransactionId == transactionId }

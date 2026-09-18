@@ -15,7 +15,7 @@ import java.time.LocalDate
  *  - a transaction settles at most one due, and a due is settled by exactly one transaction
  *    (spec 01 rule 3) — Room cannot express "unique when non-null" in an index;
  *  - a reading of a bill merges into an existing due rather than inserting a second row
- *    (spec 20 §20.4) — which is why [findMergeCandidate] exists and [insert] does not
+ *    (spec 20 §20.4) — which is why [findMergeCandidates] exists and [insert] does not
  *    replace on conflict.
  */
 @Dao
@@ -110,9 +110,22 @@ interface DueDao {
     suspend fun findSettlementCandidates(from: LocalDate, to: LocalDate): List<DueEntity>
 
     /**
-     * An existing due that a newly parsed one should merge into (spec 20 §20.4): same kind,
-     * same issuer, same card, with a due date within a tolerance — CRED and the issuer do
-     * not always agree on the date to the day.
+     * Every existing due a newly parsed one might merge into (spec 20 §20.4 step 2): same kind,
+     * same issuer, same card, with a due date within a tolerance — CRED and the issuer do not
+     * always agree on the date to the day.
+     *
+     * **The set, not a row.** Step 2 gathers candidates and step 4 chooses between them ("the
+     * candidate with the most sources, ties to earliest created"), and a payment confirmation
+     * (step 7) is matched over a window two months wide where two consecutive statements are
+     * both plausible. This query used to end `LIMIT 1`, which made SQL the chooser and fixed
+     * its answer at *earliest due date* — so a confirmation dated in late September landed on
+     * August's bill and October's never got its `PAYMENT_CONFIRMED` source. Returning the whole
+     * set is what puts the choice back in `DueMergeEngine`, where it is explainable and tested.
+     *
+     * The ordering is only for determinism — `due_date` then `id`, so the same mailbox
+     * processed twice hands the engine the same list and the engine's own tie-breaks decide.
+     * A caller that wants one row calls `DueMergeEngine.chooseTarget`; there is deliberately
+     * no single-row variant of this query any more.
      */
     @Query(
         """
@@ -126,17 +139,16 @@ interface DueDao {
                  AND account_last4 = :accountLast4)
           )
           AND due_date BETWEEN :fromDate AND :toDate
-        ORDER BY due_date ASC
-        LIMIT 1
+        ORDER BY due_date ASC, id ASC
         """
     )
-    suspend fun findMergeCandidate(
+    suspend fun findMergeCandidates(
         kind: DueKind,
         issuer: String,
         accountLast4: String?,
         fromDate: LocalDate,
         toDate: LocalDate
-    ): DueEntity?
+    ): List<DueEntity>
 
     /** Guards the one-transaction-one-due invariant before a settlement is written. */
     @Query("SELECT * FROM dues WHERE settled_transaction_id = :transactionId LIMIT 1")

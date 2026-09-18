@@ -24,20 +24,25 @@ import javax.inject.Singleton
  * **or** reference equal" and `DueDao` has no single query for that:
  *  - [DueDao.getByDueId] — the same bill read twice. Exact, and the row it returns is this
  *    reading's row whatever its status, because `due_id` is unique and an insert would abort;
- *  - [DueDao.findMergeCandidate] — same issuer, kind and card, dated within tolerance;
+ *  - [DueDao.findMergeCandidates] — same issuer, kind and card, dated within tolerance, **all
+ *    of them**;
  *  - [DueDao.getByReference] — the same invoice number or domain, dated anywhere.
  * The union is de-duplicated by row id and filtered by the engine, so a wide query costs a
  * little work and never costs correctness.
  *
- * Two edges of §20.4 step 2 that v63's DAO cannot reach, both of which the engine handles the
- * moment a query does return the row:
- *  - step 2 admits settled dues (`PAID_*`, `MARKED_PAID`) as merge candidates while
- *    [DueDao.findMergeCandidate] filters `status = 'OPEN'`. Every due this repository created
- *    is still reached after settlement, because [DueDao.getByDueId] is exact and status-blind;
- *    a *settled* due created elsewhere — a commitment's, in M2 — would need a query that does
- *    not exist yet;
- *  - [DueDao.findMergeCandidate] is `LIMIT 1`, so the card branch offers one candidate and step
- *    4's "most sources" contest only arises among the rows the reference branch returns.
+ * **No query here chooses.** The card branch used to be `LIMIT 1`, so SQL picked the earliest
+ * due date in the window and step 4 never ran on it. Over step 7's two-month payment window
+ * that handed a late-September confirmation to August's statement, and October's bill never
+ * got a `PAYMENT_CONFIRMED` source at all. Every branch now returns its whole set and
+ * [DueMergeEngine.chooseTarget] is the only thing that picks — which is also the set M2's
+ * scored `DueMatcher` (§20.5) is built on.
+ *
+ * One edge of §20.4 step 2 that v63's DAO still cannot reach, and which the engine handles the
+ * moment a query does return the row: step 2 admits settled dues (`PAID_*`, `MARKED_PAID`) as
+ * merge candidates while [DueDao.findMergeCandidates] filters `status = 'OPEN'`. Every due this
+ * repository created is still reached after settlement, because [DueDao.getByDueId] is exact
+ * and status-blind; a *settled* due created elsewhere — a commitment's, in M2 — would need a
+ * query that does not exist yet.
  *
  * It deliberately does **not** write `due_sources`. `EmailTransactionIngestor` owns that row —
  * which mail said what, and with which sender — and writing it here as well would record every
@@ -104,7 +109,14 @@ class DueRepository @Inject constructor(
         )
     }
 
-    /** §20.4 step 2, as far as SQL can answer it; the engine settles the rest. */
+    /**
+     * §20.4 step 2's candidate **set**, as far as SQL can answer it; the engine settles the rest.
+     *
+     * Every branch is a set query, so no row is discarded before the engine has seen it. The
+     * cost is bounded by the merge key and the window — a handful of rows for one card — and
+     * what it buys is that step 4's "most sources" contest and step 7's nearest-bill rule are
+     * reachable in production, not only from a unit test that calls `chooseTarget` directly.
+     */
     private suspend fun candidatesFor(
         parsed: ParsedDue,
         config: DueMergeConfig
@@ -112,13 +124,15 @@ class DueRepository @Inject constructor(
         val window = engine.mergeWindow(parsed, config)
         val rows = buildList {
             dueDao.getByDueId(engine.dueId(parsed))?.let { add(it) }
-            dueDao.findMergeCandidate(
-                kind = engine.storedKind(parsed.kind),
-                issuer = parsed.issuer,
-                accountLast4 = parsed.accountLast4,
-                fromDate = window.from,
-                toDate = window.to
-            )?.let { add(it) }
+            addAll(
+                dueDao.findMergeCandidates(
+                    kind = engine.storedKind(parsed.kind),
+                    issuer = parsed.issuer,
+                    accountLast4 = parsed.accountLast4,
+                    fromDate = window.from,
+                    toDate = window.to
+                )
+            )
             parsed.reference?.let { reference -> addAll(dueDao.getByReference(reference)) }
         }
 

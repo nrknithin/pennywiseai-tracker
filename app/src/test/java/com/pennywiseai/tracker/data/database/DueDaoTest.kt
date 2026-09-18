@@ -22,13 +22,18 @@ import java.time.LocalDateTime
 /**
  * `DueDao` against a real database (spec 06 §6.1, "Repository / DAO tests").
  *
- * [DueDao.findMergeCandidate] is the query spec 20 §20.4 turns on: it decides whether the
+ * [DueDao.findMergeCandidates] is the query spec 20 §20.4 turns on: it decides whether the
  * issuer's statement, CRED's copy of it and the aggregator's reminder land on one `dues` row or
  * three. `DueMergeEngine` is pure Kotlin and heavily tested, but the engine never sees a due it
  * was not handed — if this query returns nothing, the engine is asked to merge against an empty
  * set and inserts a duplicate, and every test above it still passes. Three of its clauses are
  * SQL-only and cannot be exercised any other way: `LOWER(issuer) = LOWER(:issuer)`, the
- * three-way NULL handling on `account_last4`, and `LIMIT 1` over a `due_date ASC` ordering.
+ * three-way NULL handling on `account_last4`, and the `due_date ASC, id ASC` ordering.
+ *
+ * What it must **not** do is choose. The query returned one row until the set query replaced it
+ * (§20.4 step 2 gathers, step 4 picks), so the cases below check the whole list where more than
+ * one row qualifies: a second candidate that SQL used to swallow is a `PAYMENT_CONFIRMED` source
+ * landing on the wrong month's bill.
  *
  * All issuers here are institutions rather than people, last-4s are the redacted `1234`/`5678`
  * of spec 06 §6.2, and no amount is anyone's real figure.
@@ -81,19 +86,33 @@ class DueDaoTest {
     )
 
     /** The window `DueRepository` opens around a newly read due date (spec 20 §20.4). */
-    private suspend fun candidateFor(
+    private suspend fun candidatesFor(
         kind: DueKind = DueKind.CARD_STATEMENT,
         issuer: String = "HDFC Bank",
         accountLast4: String? = "1234",
         around: LocalDate = billed,
         slack: Long = 3
-    ): DueEntity? = dao.findMergeCandidate(
+    ): List<DueEntity> = dao.findMergeCandidates(
         kind = kind,
         issuer = issuer,
         accountLast4 = accountLast4,
         fromDate = around.minusDays(slack),
         toDate = around.plusDays(slack)
     )
+
+    /**
+     * The head of that set, for the cases that are about *whether* a row qualifies at all.
+     *
+     * Every one of them stores a single due, so "the first row" and "the only row" are the same
+     * answer; the cases that are about more than one candidate call [candidatesFor] directly.
+     */
+    private suspend fun candidateFor(
+        kind: DueKind = DueKind.CARD_STATEMENT,
+        issuer: String = "HDFC Bank",
+        accountLast4: String? = "1234",
+        around: LocalDate = billed,
+        slack: Long = 3
+    ): DueEntity? = candidatesFor(kind, issuer, accountLast4, around, slack).firstOrNull()
 
     // -------------------------------------------------------------------------------------
     // The merge key — spec 20 §20.4
@@ -213,15 +232,40 @@ class DueDaoTest {
     }
 
     @Test
-    fun `the soonest due in the window wins`() = runBlocking {
+    fun `every open due in the window comes back, soonest first`() = runBlocking {
         dao.insert(due(dueId = "later", dueDate = billed.plusDays(2)))
         dao.insert(due(dueId = "sooner", dueDate = billed.minusDays(2)))
 
-        // `ORDER BY due_date ASC LIMIT 1` — insertion order must not decide which row three
-        // senders' readings collapse onto, or the same mailbox processed in a different order
-        // would produce a different database.
-        assertEquals("sooner", candidateFor()?.dueId)
+        // The query gathers; §20.4 step 4 chooses. It used to end `LIMIT 1`, which silently made
+        // "earliest due date" the choice — fine for two readings of one bill two days apart, and
+        // wrong for a payment confirmation matched over sixty days, where the older row is last
+        // month's statement and the money went to this month's.
+        assertEquals(listOf("sooner", "later"), candidatesFor().map { it.dueId })
     }
+
+    @Test
+    fun `two dues sharing a date come back in a stable order`() = runBlocking {
+        // A tie on `due_date` has to be broken inside SQL or not at all: SQLite is free to
+        // return rows in any order it likes, and an engine handed the same two candidates in a
+        // different order on the next sync could send the notice to a different row. `id ASC`
+        // costs nothing here and makes the list reproducible.
+        dao.insert(due(dueId = "first-in"))
+        dao.insert(due(dueId = "second-in"))
+
+        assertEquals(listOf("first-in", "second-in"), candidatesFor().map { it.dueId })
+    }
+
+    @Test
+    fun `a settled due in the window is dropped without hiding the open one beside it`() =
+        runBlocking {
+            dao.insert(due(dueId = "paid", dueDate = billed.minusDays(2), status = DueStatus.PAID_ON_TIME))
+            dao.insert(due(dueId = "open", dueDate = billed))
+
+            // The settled row is earlier, so under `LIMIT 1` a status filter that ever regressed
+            // would have taken the whole answer with it. Asserting the list keeps both halves
+            // honest: what is excluded, and that excluding it costs nothing else.
+            assertEquals(listOf("open"), candidatesFor().map { it.dueId })
+        }
 
     // -------------------------------------------------------------------------------------
     // Lookup by the issuer's own identifier
