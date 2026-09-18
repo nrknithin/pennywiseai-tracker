@@ -996,6 +996,216 @@ class DueMergeEngineTest {
         assertEquals(2L, target?.due?.id)
     }
 
+    @Test
+    fun `a payment lands on the bill whose figure it states, not on the nearer one`() {
+        // §20.5's primary criterion is the amount (+50), with the date only as step 5's
+        // tie-break. The sum a confirmation states is the sum that was paid, so October's
+        // figure paid on 15 September is October's bill however much nearer September's is.
+        val september = DueMergeEngine.Candidate(
+            dueRow(
+                id = 1,
+                dueId = "september-bill",
+                amount = BigDecimal("2500.00"),
+                dueDate = LocalDate.of(2026, 9, 5)
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+        val october = DueMergeEngine.Candidate(
+            dueRow(
+                id = 2,
+                dueId = "october-bill",
+                amount = BigDecimal("7800.00"),
+                dueDate = LocalDate.of(2026, 10, 1)
+            ),
+            listOf(source(2, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val target = engine.chooseTarget(
+            listOf(september, october),
+            confirmation(amount = BigDecimal("7800.00"), paidOn = LocalDate.of(2026, 9, 15))
+        )
+
+        assertEquals(2L, target?.due?.id)
+    }
+
+    @Test
+    fun `a payment of the minimum due lands on the bill that asked for it`() {
+        // §20.5's second amount branch (+30): paying the minimum is still paying that bill,
+        // and it is the only signal separating it from a nearer bill of another size.
+        val september = DueMergeEngine.Candidate(
+            dueRow(
+                id = 1,
+                dueId = "september-bill",
+                amount = BigDecimal("2500.00"),
+                dueDate = LocalDate.of(2026, 9, 5)
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+        val october = DueMergeEngine.Candidate(
+            dueRow(
+                id = 2,
+                dueId = "october-bill",
+                amount = BigDecimal("7800.00"),
+                minimumDue = BigDecimal("390.00"),
+                dueDate = LocalDate.of(2026, 10, 1)
+            ),
+            listOf(source(2, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val target = engine.chooseTarget(
+            listOf(september, october),
+            confirmation(amount = BigDecimal("390.00"), paidOn = LocalDate.of(2026, 9, 15))
+        )
+
+        assertEquals(2L, target?.due?.id)
+    }
+
+    @Test
+    fun `a payment whose figure fits no bill still reaches the nearest one`() {
+        // §20.5 *rejects* a candidate the amount does not fit; here the amount only orders.
+        // A part payment agrees with neither the bill nor the minimum, and rejecting every
+        // candidate would record no `due_sources` row at all — the only trace of the notice
+        // the app keeps, and what spec 26's UNMATCHED_PAYMENT_NOTICE is computed from.
+        val september = DueMergeEngine.Candidate(
+            dueRow(
+                id = 1,
+                dueId = "september-bill",
+                amount = BigDecimal("2500.00"),
+                dueDate = LocalDate.of(2026, 9, 5)
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+        val october = DueMergeEngine.Candidate(
+            dueRow(
+                id = 2,
+                dueId = "october-bill",
+                amount = BigDecimal("7800.00"),
+                dueDate = LocalDate.of(2026, 10, 1)
+            ),
+            listOf(source(2, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val target = engine.chooseTarget(
+            listOf(september, october),
+            confirmation(amount = BigDecimal("1200.00"), paidOn = LocalDate.of(2026, 9, 15))
+        )
+
+        assertEquals(1L, target?.due?.id)
+    }
+
+    @Test
+    fun `a bill nobody has sized attracts no payment through its column's zero`() {
+        // `dues.amount` is NOT NULL, so an unstated amount is stored as zero — a figure no
+        // sender ever billed (constraint C7). Scoring it would make every small payment an
+        // exact match for it, so the unsized row scores nothing and the date decides.
+        val unsized = DueMergeEngine.Candidate(
+            dueRow(
+                id = 1,
+                dueId = "unsized-bill",
+                amount = BigDecimal.ZERO,
+                amountStated = false,
+                dueDate = LocalDate.of(2026, 10, 1)
+            ),
+            listOf(source(1, AXIS_SENDER, NoticeKind.REMINDER))
+        )
+        val sized = DueMergeEngine.Candidate(
+            dueRow(
+                id = 2,
+                dueId = "sized-bill",
+                amount = BigDecimal("4321.50"),
+                dueDate = LocalDate.of(2026, 9, 20)
+            ),
+            listOf(source(2, AXIS_SENDER, NoticeKind.STATEMENT))
+        )
+
+        val target = engine.chooseTarget(
+            listOf(unsized, sized),
+            confirmation(amount = BigDecimal("0.50"), paidOn = LocalDate.of(2026, 9, 15))
+        )
+
+        assertEquals(2L, target?.due?.id)
+    }
+
+    @Test
+    fun `a bill dated further ahead of the payment than earlyPayDays is some other bill`() {
+        // §20.5's span is asymmetric — 45 days of paying early, 60 of paying late — and the
+        // confirmation window is that same span, so a bill 50 days ahead of the payment is
+        // outside it even though a bill 50 days behind would be inside.
+        val bill = dueRow(dueDate = LocalDate.of(2026, 10, 1))
+
+        assertTrue(
+            "45 days early is the far edge of the window",
+            engine.isCandidate(bill, confirmation(paidOn = LocalDate.of(2026, 8, 17)))
+        )
+        assertFalse(
+            "50 days early is past it",
+            engine.isCandidate(bill, confirmation(paidOn = LocalDate.of(2026, 8, 12)))
+        )
+    }
+
+    @Test
+    fun `a bill dated up to latePayDays before the payment is still the one that was paid`() {
+        val bill = dueRow(dueDate = LocalDate.of(2026, 8, 5))
+
+        assertTrue(
+            "55 days late is inside the window",
+            engine.isCandidate(bill, confirmation(paidOn = LocalDate.of(2026, 9, 29)))
+        )
+        assertFalse(
+            "61 days late is past it",
+            engine.isCandidate(bill, confirmation(paidOn = LocalDate.of(2026, 10, 5)))
+        )
+    }
+
+    @Test
+    fun `a payment confirmation lends the due no standing of its own`() {
+        val credBill = source(1, CRED_SENDER, NoticeKind.STATEMENT)
+        val confirmed = source(1, AXIS_SENDER, NoticeKind.PAYMENT_CONFIRMED)
+
+        assertEquals(NoticePrecedence.CRED.rank, engine.standingOf(listOf(credBill, confirmed)))
+        assertNull(
+            "a due whose only notice confirmed a payment stands behind no figure",
+            engine.standingOf(listOf(confirmed))
+        )
+    }
+
+    @Test
+    fun `a corrected bill still lands on a due a payment notice has touched`() {
+        // A due built from CRED's copy, with the issuer's "payment received" recorded against
+        // it afterwards. CRED's own correction is the authority that set the figure, so it may
+        // restate it — and would not if the confirmation had raised the row's standing to the
+        // reminder rung, which would leave the due holding a figure the biller has withdrawn.
+        val existing = DueMergeEngine.Candidate(
+            dueRow(amount = BigDecimal("7800.00")),
+            listOf(
+                source(1, CRED_SENDER, NoticeKind.STATEMENT),
+                source(1, AXIS_SENDER, NoticeKind.PAYMENT_CONFIRMED)
+            )
+        )
+
+        val outcome = engine.merge(existing, credNotice(amount = BigDecimal("8100.00")))
+
+        assertEquals(BigDecimal("8100.00"), outcome.due.amount)
+        assertTrue(outcome.changed)
+    }
+
+    @Test
+    fun `a statement beside a confirmation still keeps an aggregator out`() {
+        // The counterpart: dropping confirmations from the standing drops nothing else. The
+        // issuer's statement on this row still outranks CRED's copy of it (§20.4 step 4).
+        val existing = DueMergeEngine.Candidate(
+            dueRow(amount = BigDecimal("7800.00")),
+            listOf(
+                source(1, AXIS_SENDER, NoticeKind.STATEMENT),
+                source(1, AXIS_SENDER, NoticeKind.PAYMENT_CONFIRMED)
+            )
+        )
+
+        val outcome = engine.merge(existing, credNotice(amount = BigDecimal("8100.00")))
+
+        assertEquals(BigDecimal("7800.00"), outcome.due.amount)
+    }
+
     // =========================================================================================
     // The two DueKind vocabularies
     // =========================================================================================

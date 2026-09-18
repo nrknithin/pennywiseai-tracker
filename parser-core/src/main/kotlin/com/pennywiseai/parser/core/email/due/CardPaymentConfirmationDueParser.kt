@@ -72,6 +72,16 @@ class CardPaymentConfirmationDueParser : DueParser {
         // Mandatory: an issuer the app can name, a figure and a date. Any of them missing and
         // the mail yields nothing — a confirmation attributed to the wrong card would mark the
         // wrong bill as paid (spec 01, constraint C7).
+        //
+        // The elvis here is a second lock, and it is kept deliberately. [CRED_PAYMENT]'s first
+        // group is a closed alternation of the same six tokens [CRED_ISSUERS] keys, so today an
+        // unknown issuer is already rejected one step earlier, by the regex failing to match —
+        // which makes this branch unreachable *by construction, not by contract*. Delete it and
+        // the day someone widens that alternation (or drops a map entry) the lookup starts
+        // returning null and a payment gets attributed to `null`, or to whatever the next
+        // refactor substitutes. Failing closed costs one line. Both halves of the contract are
+        // pinned in `CardPaymentConfirmationDueParserTest`: every token the alternation admits
+        // resolves to a name, and a CRED mail naming any other issuer yields nothing.
         val issuer = CRED_ISSUERS[match.groupValues[1].lowercase()] ?: return emptyList()
         val paid = Money.parse(match.groupValues[3]) ?: return emptyList()
         val paidOn = DateParse.parseDate(match.groupValues[4]) ?: return emptyList()

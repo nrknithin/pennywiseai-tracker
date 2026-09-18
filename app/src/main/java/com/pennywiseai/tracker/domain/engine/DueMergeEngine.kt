@@ -32,16 +32,34 @@ data class DueMergeConfig(
     val mergeDateToleranceDays: Long = 2,
 
     /**
-     * How far a payment confirmation (§20.4 step 7) may sit from the bill it cleared.
+     * How far **ahead of** a payment confirmation (§20.4 step 7) the bill it cleared may be
+     * dated — `settings.dues.earlyPayDays` (45), the early side of §20.5's settlement span.
      *
-     * A separate figure because the two dates mean different things. `mergeDateToleranceDays`
-     * compares two senders' idea of *the same due date*, so two days is generous. A payment
-     * notice states the day the **money moved**, which is a different quantity entirely: a card
-     * bill can be paid three weeks early or three weeks late and still be that bill. So a
-     * confirmation is matched over §20.5's settlement span instead, taking its outer bound —
-     * `settings.dues.latePayDays` (60) — symmetrically, with the nearest bill winning.
+     * A separate figure from [mergeDateToleranceDays] because the two dates mean different
+     * things. That one compares two senders' idea of *the same due date*, so two days is
+     * generous. A payment notice states the day the **money moved**, which is a different
+     * quantity entirely: a card bill can be paid three weeks early or three weeks late and
+     * still be that bill. So a confirmation is matched over §20.5's settlement span instead,
+     * which is **asymmetric** — 45 days of paying early, 60 of paying late — and is the same
+     * span `PlausibleDueSettler` gives the *transaction* the same mail produces. A confirmation
+     * that could reach a bill the settler could never settle would raise spec 26's
+     * `UNMATCHED_PAYMENT_NOTICE` against a statement nobody paid.
      */
-    val paymentNoticeWindowDays: Long = 60
+    val paymentNoticeEarlyDays: Long = 45,
+
+    /**
+     * How far **behind** a payment confirmation the bill it cleared may be dated — how late the
+     * user is allowed to be. `settings.dues.latePayDays` (60).
+     */
+    val paymentNoticeLateDays: Long = 60,
+
+    /**
+     * §20.5 step 4's amount tolerance, which [DueMergeEngine.chooseTarget] scores a payment
+     * confirmation against its candidate bills with: `settings.dues.amountToleranceAbs` (1.00)
+     * and `amountTolerancePct` (0), the same two figures `SettlementConfig` carries.
+     */
+    val amountToleranceAbs: BigDecimal = BigDecimal("1.00"),
+    val amountTolerancePct: BigDecimal = BigDecimal.ZERO
 )
 
 /**
@@ -90,7 +108,8 @@ enum class NoticePrecedence(val rank: Int) {
  *  - [dueId] — step 1's identity. Two readings of one bill must land on one row, and a row's
  *    identity never changes afterwards (see [merge]).
  *  - [chooseTarget] — steps 2 and 4: the candidate with the most sources wins, ties to the
- *    earliest created, and a row carrying the *same* [dueId] wins outright.
+ *    earliest created, and a row carrying the *same* [dueId] wins outright. A payment
+ *    confirmation is ordered by §20.5's criteria instead, the amount first.
  *  - [merge] — step 4's precedence ladder, step 5's aggregator upgrade, and the rule that a
  *    settled due is immutable to notices (§20.7).
  *  - [escalationOf] — step 4's `escalation = max(current, notice)`, which at schema v63 has no
@@ -121,7 +140,11 @@ class DueMergeEngine @Inject constructor(
     }
 
     /** The date range step 2 looks in, inclusive at both ends. */
-    data class DateWindow(val from: LocalDate, val to: LocalDate)
+    data class DateWindow(val from: LocalDate, val to: LocalDate) {
+        /** True when a stored due's date lies in the window. */
+        operator fun contains(date: LocalDate): Boolean =
+            !date.isBefore(from) && !date.isAfter(to)
+    }
 
     /** What a merge did to one row. [changed] is false when the notice told us nothing new. */
     data class MergeOutcome(
@@ -172,24 +195,33 @@ class DueMergeEngine @Inject constructor(
         ).joinToString("|")
     )
 
-    /** Step 2's date window: the readings must date the bill within the tolerance of each other. */
+    /**
+     * Step 2's date window, which depends on what the incoming date *is*.
+     *
+     * For a bill it is another sender's reading of the same due date, so the window is
+     * `mergeDateToleranceDays` (±2) either way. For a payment confirmation it is the day the
+     * money moved, which §20.4 step 7 has to reconcile with a due date the notice never states,
+     * so the window is §20.5's settlement span: a bill may be dated up to
+     * [DueMergeConfig.paymentNoticeEarlyDays] (45) **after** the payment — paid early, §20.8's
+     * own worked case — and up to [DueMergeConfig.paymentNoticeLateDays] (60) **before** it.
+     *
+     * Asymmetric on purpose, and in the same direction `PlausibleDueSettler` reads §20.5 step 3
+     * (docs/FORK-CHANGES.md: the spec's `before/after = early/late` pairing reads backwards).
+     * This is the one definition of the window: `DueRepository` hands it to SQL and
+     * [isCandidate] re-tests it in Kotlin, so the query and the rule cannot drift apart.
+     */
     fun mergeWindow(parsed: ParsedDue, config: DueMergeConfig = DueMergeConfig()): DateWindow =
-        toleranceDays(parsed, config).let { tolerance ->
+        if (parsed.paymentConfirmed) {
             DateWindow(
-                from = parsed.dueDate.minusDays(tolerance),
-                to = parsed.dueDate.plusDays(tolerance)
+                from = parsed.dueDate.minusDays(config.paymentNoticeLateDays),
+                to = parsed.dueDate.plusDays(config.paymentNoticeEarlyDays)
+            )
+        } else {
+            DateWindow(
+                from = parsed.dueDate.minusDays(config.mergeDateToleranceDays),
+                to = parsed.dueDate.plusDays(config.mergeDateToleranceDays)
             )
         }
-
-    /**
-     * How far the two dates may lie apart, which depends on what the incoming date *is*.
-     *
-     * For a bill it is another sender's reading of the same due date (±2). For a payment
-     * confirmation it is the day the money moved, which §20.4 step 7 has to reconcile with a
-     * due date it never states — see [DueMergeConfig.paymentNoticeWindowDays].
-     */
-    private fun toleranceDays(parsed: ParsedDue, config: DueMergeConfig): Long =
-        if (parsed.paymentConfirmed) config.paymentNoticeWindowDays else config.mergeDateToleranceDays
 
     // -----------------------------------------------------------------------------------------
     // Steps 2 and 4 — which row this reading belongs to
@@ -219,8 +251,7 @@ class DueMergeEngine @Inject constructor(
         // figure that means nothing (upstream CLAUDE.md constraint 2).
         if (!due.currency.equals(parsed.currency.trim(), ignoreCase = true)) return false
         if (!sameAccount(due, parsed) && !sameReference(due, parsed)) return false
-        return abs(ChronoUnit.DAYS.between(due.dueDate, parsed.dueDate)) <=
-            toleranceDays(parsed, config)
+        return due.dueDate in mergeWindow(parsed, config)
     }
 
     /**
@@ -231,10 +262,17 @@ class DueMergeEngine @Inject constructor(
      *
      * A payment confirmation is ordered differently, and has to be. Step 4's contest assumes
      * every candidate is a reading of *one* bill, which the ±2-day window all but guarantees;
-     * over the two-month span a payment is matched across (§20.4 step 7) two consecutive card
+     * over the settlement span a payment is matched across (§20.4 step 7) two consecutive card
      * statements are both candidates, and "most sources" would cheerfully hand the payment to
-     * last month's. The bill a payment cleared is the nearest one by date — the same tie-break
-     * §20.5 settles a transaction with.
+     * last month's.
+     *
+     * What decides between them is §20.5's own scoring, whose **primary criterion is the
+     * amount** (`+50` the bill, `+30` the minimum due) and whose date term is only the
+     * tie-break of step 5. The sum a confirmation states is the sum that was paid, so the bill
+     * it equals is the bill it cleared — evidence the row carries and the date cannot override:
+     * a 5 September statement is nearer to a payment made on the 15th than a 1 October one, and
+     * still the wrong bill when the figure paid is October's. Date orders only what the amount
+     * leaves level, and [Candidate.sourceCount] only what both leave level.
      */
     fun chooseTarget(
         candidates: List<Candidate>,
@@ -249,9 +287,9 @@ class DueMergeEngine @Inject constructor(
             .thenBy { it.due.id }
         val ordering =
             if (parsed.paymentConfirmed) {
-                compareBy<Candidate> {
-                    abs(ChronoUnit.DAYS.between(it.due.dueDate, parsed.dueDate))
-                }.then(byAuthority)
+                compareByDescending<Candidate> { confirmationScore(it.due, parsed, config) }
+                    .thenBy { abs(ChronoUnit.DAYS.between(it.due.dueDate, parsed.dueDate)) }
+                    .then(byAuthority)
             } else {
                 byAuthority
             }
@@ -259,6 +297,41 @@ class DueMergeEngine @Inject constructor(
             .filter { isCandidate(it.due, parsed, config) }
             .sortedWith(ordering)
             .firstOrNull()
+    }
+
+    /**
+     * §20.5 step 4's amount criterion, scored against one candidate bill: `+50` when the sum
+     * paid is the amount billed, `+30` when it is the minimum due, nothing when it is neither.
+     *
+     * §20.5 *rejects* a candidate whose amount agrees on neither count. Here it only orders,
+     * which is the reading that loses no data (docs/FORK-CHANGES.md). Rejection costs §20.5
+     * nothing — a transaction that settles no due is still a saved transaction — but a
+     * confirmation that matches no candidate records no `due_sources` row, and that row is the
+     * only trace of the notice the app keeps: a confirmation never creates a due of its own
+     * (`DueWriter.mergeIntoExisting`), so rejecting every candidate would throw away the very
+     * evidence spec 26's `UNMATCHED_PAYMENT_NOTICE` is computed from. Partial payments make
+     * that the common case rather than a corner one — §20.5 itself expects a payment between
+     * the minimum and the full amount, which agrees with neither figure.
+     *
+     * A due whose amount nobody has stated scores nothing rather than matching everything: its
+     * `amount` is the NOT NULL column's zero, not a figure anybody billed (constraint C7).
+     */
+    private fun confirmationScore(
+        due: DueEntity,
+        parsed: ParsedDue,
+        config: DueMergeConfig
+    ): Int {
+        val paid = parsed.amount?.abs() ?: return 0
+        val billed = statedAmount(due)?.takeIf { it.signum() > 0 }
+        if (billed != null) {
+            val tolerance = config.amountToleranceAbs.max(billed.multiply(config.amountTolerancePct))
+            if ((paid - billed).abs() <= tolerance) return AMOUNT_MATCH_SCORE
+        }
+        val minimum = due.minimumDue?.takeIf { it.signum() > 0 }
+        if (minimum != null && (paid - minimum).abs() <= config.amountToleranceAbs) {
+            return MINIMUM_MATCH_SCORE
+        }
+        return 0
     }
 
     // -----------------------------------------------------------------------------------------
@@ -317,7 +390,8 @@ class DueMergeEngine @Inject constructor(
      * Step 4's field-by-field precedence, step 5's in-place aggregator upgrade, and R-20-09.
      *
      * The authority behind a row's current figures is the highest-ranked notice already
-     * recorded against it. A notice at least that authoritative may correct `amount`,
+     * recorded against it that *stated* one — see [standingOf]. A notice at least that
+     * authoritative may correct `amount`,
      * `minimum_due` and `due_date`; any notice at all may fill a field that is still null.
      * A row with no sources yet — one generated from a commitment (§20.6), or entered by hand —
      * has no authority standing behind it, so the first notice to describe it wins, which is
@@ -334,7 +408,7 @@ class DueMergeEngine @Inject constructor(
     ): MergeOutcome {
         val due = target.due
         val incoming = precedenceOf(parsed)
-        val standing = target.sources.maxOfOrNull { precedenceOf(it).rank }
+        val standing = standingOf(target.sources)
         // §20.4 step 7. A payment confirmation is never authoritative over anything, whatever
         // rung its sender sits on, because it is not talking about the bill: "amount paid" and
         // "amount due" are different numbers the moment somebody pays the minimum, and the date
@@ -532,6 +606,29 @@ class DueMergeEngine @Inject constructor(
             ?: issuerRank(source.noticeKind)
 
     /**
+     * The authority standing behind a row's current figures: the highest rank among the notices
+     * that actually contributed one. Null while none has, which is what lets the first notice
+     * on a committed or hand-entered due set its amount (§20.4 step 4).
+     *
+     * A `PAYMENT_CONFIRMED` source is excluded, whoever sent it. [merge] refuses a confirmation
+     * every figure — `authoritative = !confirmation && …` — so it leaves the row's amount,
+     * minimum and date exactly as it found them; letting it then *raise the bar* for the next
+     * notice would give the row a standing no reading of the bill ever earned. Concretely: a
+     * due built from CRED's copy stands at [NoticePrecedence.CRED], and CRED's own corrected
+     * bill may restate the figure. Record an ICICI "payment received" against it and the row
+     * would stand at [NoticePrecedence.ISSUER_REMINDER] instead, after which the correction is
+     * refused and the due keeps a figure the biller has already withdrawn (spec 12 H12) — on
+     * the word of a notice that stated no figure at all.
+     *
+     * This is not the aggregator rule in disguise: an ICICI *statement* recorded on that same
+     * due does raise the standing to [NoticePrecedence.ISSUER_STATEMENT], because it states the
+     * bill.
+     */
+    fun standingOf(sources: List<DueSourceEntity>): Int? =
+        sources.filterNot { it.noticeKind == NoticeKind.PAYMENT_CONFIRMED }
+            .maxOfOrNull { precedenceOf(it).rank }
+
+    /**
      * Anything the app cannot name as one of the three aggregators is treated as the biller's
      * own mail, which is what every other parser in `:parser-core` reads. A fourth aggregator
      * needs a row here as well as a parser.
@@ -547,9 +644,11 @@ class DueMergeEngine @Inject constructor(
     private fun issuerRank(kind: NoticeKind): NoticePrecedence = when (kind) {
         NoticeKind.STATEMENT -> NoticePrecedence.ISSUER_STATEMENT
         // A payment confirmation is the issuer speaking about its own bill, and §20.4 step 7
-        // keeps it from settling anything. It ranks below a statement, which matters only for
-        // what it does to *later* notices: [merge] refuses it every figure outright, so the
-        // rung it holds is the authority it lends the row, not a licence of its own.
+        // keeps it from settling anything, so it sits on the reminder rung rather than the
+        // statement one. Both ways that rung could matter are closed: [merge] refuses a
+        // confirmation every figure of its own, and [standingOf] drops confirmations before
+        // taking the maximum, so it lends the row no authority over later notices either. What
+        // is left is a label on the notice, which is all step 7 asks of it.
         else -> NoticePrecedence.ISSUER_REMINDER
     }
 
@@ -665,6 +764,12 @@ class DueMergeEngine @Inject constructor(
             DueStatus.PAID_LATE,
             DueStatus.MARKED_PAID
         )
+
+        /** §20.5 step 4: the sum paid is the amount billed. */
+        private const val AMOUNT_MATCH_SCORE = 50
+
+        /** §20.5 step 4: the sum paid is the minimum due — the user paid the minimum. */
+        private const val MINIMUM_MATCH_SCORE = 30
 
         /** `REMINDER < DUE_TODAY < OVERDUE_NOTICE`; 0 means "on the ladder, but not urgent". */
         private val ESCALATION_RANK = mapOf(

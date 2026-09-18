@@ -207,6 +207,86 @@ class CardPaymentConfirmationDueParserTest {
         assertTrue(ids.contains("CARD_PAYMENT_CONFIRMED"), "expected the payment parser, got $ids")
     }
 
+    // -----------------------------------------------------------------------------------------
+    // The issuer guard — "an issuer the app can name, or nothing"
+    // -----------------------------------------------------------------------------------------
+    //
+    // CRED is an aggregator, so the issuer token in the mail is the only thing that says which
+    // bill was paid. `readCred` resolves it through a fixed map and bails when the lookup misses.
+    // That elvis is unreachable today only because the template regex admits exactly the same six
+    // tokens the map keys. The three factories below pin the *observable* halves of that
+    // contract — every token the alternation admits resolves to a name, any other token yields
+    // nothing, and case does not matter — which is what a caller can rely on.
+    //
+    // What they deliberately do not do is detect drift between the two sides, and an earlier
+    // version of this comment claimed they did. They cannot: all three iterate hard-coded
+    // literal lists, because `CRED_ISSUERS` is private and the regex is not introspectable from
+    // here. Add `|Kotak Bank` to the alternation without a map key and the negative factory's
+    // "kotak bank yields nothing" case still passes, because an unresolvable issuer and an
+    // unmatched regex are the same silence from outside. Pinning drift would mean exposing the
+    // map to the test, which is a larger change than the risk warrants — the failure mode it
+    // guards is a payment attributed to nobody, and that is already the asserted behaviour.
+
+    @TestFactory
+    fun `every issuer the CRED template admits resolves to a name the app uses`(): List<DynamicTest> =
+        listOf(
+            "hdfc bank" to "HDFC Bank",
+            "axis bank" to "Axis Bank",
+            "icici bank" to "ICICI Bank",
+            "sbi card" to "SBI Card",
+            "onecard" to "OneCard",
+            "american express" to "American Express"
+        ).map { (token, issuer) ->
+            DynamicTest.dynamicTest("CRED's \"$token\" is read as $issuer") {
+                assertEquals(issuer, parseOne(CRED_SENDER, credPayment(token)).issuer)
+            }
+        }
+
+    @TestFactory
+    fun `a CRED payment naming an issuer the app cannot name yields nothing`(): List<DynamicTest> =
+        // Each of these is a real-shaped C2 mail differing from a parsed one in the issuer token
+        // alone: same card line, same figure, same date. Silence is the required answer — a
+        // confirmation the app cannot attribute must never mark *some other* bill paid (C7).
+        listOf(
+            "kotak bank",
+            "yes bank",
+            "federal bank",
+            "idfc first bank",
+            "bank"
+        ).map { token ->
+            DynamicTest.dynamicTest("CRED's \"$token\" is not attributed to anyone") {
+                val dues = parser.parse(
+                    EmailParserTestUtils.message(
+                        from = CRED_SENDER,
+                        subject = "your credit card bill payment was successful",
+                        body = credPayment(token)
+                    )
+                )
+                assertTrue(dues.isEmpty(), "expected no reading for \"$token\", got $dues")
+            }
+        }
+
+    @TestFactory
+    fun `the issuer token is resolved however CRED cases it`(): List<DynamicTest> =
+        // CRED's text bodies are lower-case prose and its HTML tables title-case the same token;
+        // the lookup lower-cases before it hits the map so both land on one issuer.
+        listOf("axis bank", "Axis Bank", "AXIS BANK", "Axis BANK").map { token ->
+            DynamicTest.dynamicTest("\"$token\" is read as Axis Bank") {
+                assertEquals("Axis Bank", parseOne(CRED_SENDER, credPayment(token)).issuer)
+            }
+        }
+
+    /**
+     * A C2 payment block carrying [issuerToken] and nothing else variable, so a case that fails
+     * can only have failed on the issuer. Card suffix and figures are invented (spec 06 §6.2).
+     */
+    private fun credPayment(issuerToken: String): String = """
+        $issuerToken $BULLET$BULLET 1234
+        payment details
+        amount paid ${RUPEE}7,310.00
+        payment date oct 5, 2026
+    """.trimIndent()
+
     private fun parseOne(from: String, body: String): ParsedDue {
         val dues = parser.parse(
             EmailParserTestUtils.message(from = from, subject = "payment", body = body)

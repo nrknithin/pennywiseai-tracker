@@ -63,6 +63,22 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   it is never hand-edited. The fork must either break that rule or replace the script.
   *Meanwhile:* the version stays untouched at upstream's value.
 
+- [ ] **May an ignore rule name a correspondent who is neither a bank nor a merchant?**
+  `MARKETING_SENDERS` in `parser-core/.../email/IgnoreRules.kt` seeds two addresses — `talent@ibm.com`
+  and `ibm@email.ibm.com` — that were taken from your mailbox like every other entry in that list.
+  They are institutional addresses, so `PiiLintTest` passes them and spec 06 §6.2's redaction
+  conventions (last-4, VPAs, names, refs, amounts) do not reach them. But unlike every other seed
+  they say nothing about money: they identify a **recruiting relationship of yours**, which ground
+  rule 3's list of personal data does not mention either way. Nothing here is actionable by a
+  reader — no number, no account, no name — so this is a taste call about what the repository
+  should be seen to know, not a leak.
+  *Recommendation:* replace them with a generic rule if you want the repo silent about who writes to
+  you; keep them if the noise they suppress is worth it. A generic recruiting-domain rule is weaker,
+  because it would have to guess at domains.
+  *Meanwhile:* the file is left exactly as it is and the ignore rule keeps working. If the answer is
+  "drop them", it is a two-line change plus one test.
+  *Where it goes:* nowhere in the repo — tell the next run which, and it does it.
+
 - [ ] **How a mailbox gets connected — and therefore when M1d can close.** There is no way to
   enter an email address, a folder or an app password in the app today. `presentation/` has no
   email package, and outside `EmailSyncWorker` and `PennyWiseApplication` nothing reads
@@ -107,8 +123,8 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   ```
   As of 2026-09-18 `PennyWiseApplication` enqueues `EmailSyncWorker.enqueuePeriodic` on process
   start. This is the first change in the fork whose whole effect is a *background run*, and
-  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,897 green
-  tests proves the job exists on a real device.
+  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,974 green tests
+  measured on 2026-09-18 proves the job exists on a real device.
   *Meanwhile:* the runner underneath it is tested headlessly (`EmailSyncWorkerTest`, 21 tests),
   so a scheduling problem would be the only thing this check could find.
   *Where it goes:* nowhere in the repo — it is a one-line confirmation after a cold start.
@@ -148,6 +164,7 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-18 | May an ignore rule name a correspondent who is neither a bank nor a merchant? | Found while auditing the repo for anything traceable to you. Two IBM recruiting addresses sit in `MARKETING_SENDERS` alongside the banks and merchants, seeded from your mailbox like the rest of the list. Nothing is exposed that anyone could act on, and no rule in the project forbids it — which is exactly why the automation will not decide it. **Also worth knowing, and not a blocker:** the last three code defects in the email pipeline were closed this run, so the **Gmail app password** above is now the *only* thing between a green pipeline and a real sync. The rules behind it are no longer merely green — a payment confirmation now reaches the bill whose figure it states, over the window §20.5 actually specifies, and lends that bill no authority of its own. The first real sync will be testing your network and Gmail, not the logic |
 | 2026-09-18 | (no new blockers) | Two engine behaviours landed — an own-account transfer now becomes a single `TRANSFER` (spec 14 §14.5), and a "payment received" mail now records a source without settling anything (spec 20 §20.4 step 7) — and neither needed anything from you. Worth knowing rather than doing: **the transfer fix is correct but inert until Fin knows your accounts.** The own-account list is seeded from `account_balances` and `cards`, so it only recognises accounts the app has already seen mail about, and `OwnAccount.vpa` is always null at schema v63 — a transfer identified only by a UPI handle still lands as two rows. That is the existing "Your own accounts and UPI handles" item above, which stays open and unticked. Also unchanged: the **Gmail app password** is still the single thing between the green pipeline and a real sync |
 | 2026-09-18 | A device or emulator session for the schema-migration suite | The first Room-backed tests landed this run and run real SQL, which made the remaining hole precise rather than vague: they exercise the schema Room creates from scratch, never the upgrade path. `MigrationTestHelper` can only read the schema JSON through instrumentation assets, so the suite cannot run headlessly at any price worth paying. Nothing to do yet — filed so that M2's first hand-written migration is not written on the assumption that `./init.sh` can check it |
 | 2026-09-18 | (no new blockers) | The **Gmail app password** and the **`dumpsys jobscheduler` confirmation** are both still open and still the only two things between the green pipeline and a real sync. Neither was ticked here — the automation never ticks; that is the owner's signal. The keystore entry above gained one factual note: its git-ignore promise is now actually enforced by `.gitignore` rather than by the files not existing |

@@ -355,11 +355,12 @@ class DueRepositoryTest {
 
     @Test
     fun `a payment confirmation reaches the nearer bill, not the oldest one open`() = runBlocking {
-        // The case the ±60-day window of step 7 exists for, and the one it used to get wrong.
-        // August's statement is still OPEN because it was paid from an account Fin cannot see;
-        // October's is the bill this confirmation cleared. Both sit inside the window the
-        // confirmation opens — [30 Jul, 27 Nov] around 28 September — so production has to hand
-        // `chooseTarget` both rows and let §20.4 step 4's nearest-bill ordering decide.
+        // The case the settlement-span window of step 7 exists for, and the one it used to get
+        // wrong. August's statement is still OPEN because it was paid from an account Fin cannot
+        // see; October's is the bill this confirmation cleared. Both sit inside the window the
+        // confirmation opens — [30 Jul, 12 Nov] around 28 September, 60 days back and 45 forward
+        // — so production has to hand `chooseTarget` both rows and let §20.4 step 4's
+        // payment-confirmation ordering decide.
         //
         // Every other signal points the wrong way on purpose: August is first by `due_date ASC`,
         // which is what the old `LIMIT 1` query returned, and it is also the row with the most
