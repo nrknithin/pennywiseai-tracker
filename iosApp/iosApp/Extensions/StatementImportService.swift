@@ -38,7 +38,7 @@ enum StatementImportService {
             .replacingOccurrences(of: #"(\.\d{2})(\d)"#, with: "$1\n$2", options: .regularExpression)
             .replacingOccurrences(of: #"(\.\d{2})([₹R])"#, with: "$1\n$2", options: .regularExpression)
 
-        let snapshot = PennyWiseSharedFacade.companion.shared.importStatementTextAndLoadHome(statementText: fullText)
+        let snapshot = FinTrackSharedFacade.companion.shared.importStatementTextAndLoadHome(statementText: fullText)
         if snapshot.lastImportParsed > 0 {
             return "\(snapshot.lastImportImported) transactions imported, \(snapshot.lastImportSkipped) skipped"
         } else if let error = snapshot.lastError {

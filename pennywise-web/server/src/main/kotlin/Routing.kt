@@ -9,8 +9,8 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.html.*
 import io.ktor.server.plugins.cors.routing.*
-import com.pennywiseai.parser.core.bank.BankParserRegistry
-import com.pennywiseai.parser.core.bank.*
+import com.nrknithin.fintrack.parser.core.bank.BankParserRegistry
+import com.nrknithin.fintrack.parser.core.bank.*
 import com.example.ui.ParseViews.respondParsePage
 import com.example.ui.ParseViews.renderParseResult
 import com.example.ui.BankViews

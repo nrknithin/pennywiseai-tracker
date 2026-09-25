@@ -19,8 +19,8 @@ cd "$(dirname "$0")/.."
 # repeat runs and skips them, so the generated files would not be rewritten. Only
 # this on-demand regen uses it; the CI staleness guard runs the tests normally.
 UPDATE_SUPPORTED_BANKS=true ./gradlew :parser-core:jvmTest \
-  --tests "com.pennywiseai.parser.core.SupportedBanksDocTest" \
-  --tests "com.pennywiseai.parser.core.BankSamplesDocTest" \
+  --tests "com.nrknithin.fintrack.parser.core.SupportedBanksDocTest" \
+  --tests "com.nrknithin.fintrack.parser.core.BankSamplesDocTest" \
   --rerun-tasks
 
 echo "Updated the supported-banks catalogue, the README block, the Play listing"

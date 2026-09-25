@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -26,7 +26,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("5.99"),
                     currency = "AED",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "CARREFOUR",
                     accountLast4 = null,  // XXXX is all masked, so null
                     balance = BigDecimal("0480.15"),  // X replaced with 0
@@ -42,7 +42,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("125.50"),
                     currency = "AED",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "DUBAI MALL",
                     accountLast4 = "1234",
                     balance = BigDecimal("3250.75"),
@@ -58,7 +58,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("89.99"),
                     currency = "USD",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "AMAZON",
                     accountLast4 = "5678",
                     balance = BigDecimal("2500.00"),
@@ -74,7 +74,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1250.00"),
                     currency = "AED",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "ELECTRONICS STORE",
                     accountLast4 = "9876",
                     balance = BigDecimal("8750.50"),
@@ -90,7 +90,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("45.00"),
                     currency = "AED",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "COFFEE SHOP",
                     accountLast4 = "4321",
                     balance = BigDecimal("0123.45"),  // X replaced with 0
@@ -106,7 +106,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("150.00"),
                     currency = "EUR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "PARIS STORE",
                     accountLast4 = "7890",
                     balance = BigDecimal("4500.00"),
@@ -124,7 +124,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("50.00"),
                     currency = "AED",
-                    type = com.pennywiseai.parser.core.TransactionType.CREDIT,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.CREDIT,
                     merchant = "SAMPLE MERCHANT NAME",
                     accountLast4 = "1234",
                     creditLimit = BigDecimal("1000.00")
@@ -141,7 +141,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal.ZERO,
                     currency = "",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE
                 )
             ),
 
@@ -153,7 +153,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal.ZERO,
                     currency = "",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE
                 )
             ),
 
@@ -165,7 +165,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal.ZERO,
                     currency = "",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE
                 )
             ),
 
@@ -177,7 +177,7 @@ class MashreqBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal.ZERO,
                     currency = "",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE
                 )
             )
         )

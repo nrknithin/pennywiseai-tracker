@@ -48,7 +48,7 @@ struct MainTabView: View {
                     .tag(AppTab.home)
 
                     NavigationStack {
-                        TransactionListView(facade: PennyWiseSharedFacade.companion.shared)
+                        TransactionListView(facade: FinTrackSharedFacade.companion.shared)
                     }
                     .tabItem {
                         Label(AppTab.transactions.rawValue, systemImage: AppTab.transactions.icon)
@@ -80,7 +80,7 @@ struct MainTabView: View {
                     set: { showQuickAdd = $0 }
                 )) {
                     NavigationStack {
-                        AddEditTransactionView(facade: PennyWiseSharedFacade.companion.shared)
+                        AddEditTransactionView(facade: FinTrackSharedFacade.companion.shared)
                     }
                 }
 

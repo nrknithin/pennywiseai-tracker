@@ -1,8 +1,8 @@
-import com.pennywiseai.parser.core.TransactionType
-import com.pennywiseai.parser.core.bank.IndianBankParser
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.TransactionType
+import com.nrknithin.fintrack.parser.core.bank.IndianBankParser
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -190,7 +190,7 @@ class IndianBankParserTest {
     @TestFactory
     fun `factory resolves indian bank`(): List<DynamicTest> {
         val cases = listOf(
-            com.pennywiseai.parser.core.test.SimpleTestCase(
+            com.nrknithin.fintrack.parser.core.test.SimpleTestCase(
                 bankName = "Indian Bank",
                 sender = "BV-INDBNK-S",
                 currency = "INR",
@@ -205,7 +205,7 @@ class IndianBankParserTest {
                 ),
                 shouldHandle = true
             ),
-            com.pennywiseai.parser.core.test.SimpleTestCase(
+            com.nrknithin.fintrack.parser.core.test.SimpleTestCase(
                 bankName = "Indian Bank",
                 sender = "INDBNK",
                 currency = "INR",

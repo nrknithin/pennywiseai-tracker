@@ -3,7 +3,7 @@ import SwiftUI
 
 struct TransactionDetailView: View {
     let transactionId: Int64
-    let facade: PennyWiseSharedFacade
+    let facade: FinTrackSharedFacade
     var onUpdate: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss

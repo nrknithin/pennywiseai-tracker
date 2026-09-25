@@ -10,7 +10,7 @@ plugins {
 }
 
 android {
-    namespace = "com.pennywiseai.tracker"
+    namespace = "com.nrknithin.fintrack"
     compileSdk = 37
     
     buildFeatures {
@@ -18,7 +18,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.pennywiseai.tracker"
+        applicationId = "com.nrknithin.fintrack"
         minSdk = 26
         targetSdk = 36
         versionCode = 104
@@ -142,7 +142,7 @@ android {
         }
     }
     // Lists every values-<lang>/ folder as a supported locale, so Android 13+
-    // shows PennyWise under System settings → App languages.
+    // shows FinTrack under System settings → App languages.
     androidResources {
         generateLocaleConfig = true
     }

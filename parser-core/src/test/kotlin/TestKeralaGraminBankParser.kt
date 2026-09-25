@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -26,7 +26,7 @@ class KeralaGraminBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("160.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "UPI Transfer",
                     accountLast4 = "2345",
                     reference = "170632692557"
@@ -41,7 +41,7 @@ class KeralaGraminBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("3000"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "UPI Payment",
                     accountLast4 = "123",
                     reference = "529807237409"
@@ -56,7 +56,7 @@ class KeralaGraminBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("500"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "merchant",
                     accountLast4 = "5678",
                     reference = "123456789012"
@@ -71,7 +71,7 @@ class KeralaGraminBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1250.50"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "UPI Transfer",
                     accountLast4 = "9876",
                     reference = "987654321098"

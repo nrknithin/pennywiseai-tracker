@@ -58,7 +58,7 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:$logback_version")
 
     // Parser core
-    implementation("com.pennywiseai:parser-core:0.1.0-SNAPSHOT")
+    implementation("com.nrknithin.fintrack:parser-core:0.1.0-SNAPSHOT")
 
     // Testing
     testImplementation("io.ktor:ktor-server-test-host")

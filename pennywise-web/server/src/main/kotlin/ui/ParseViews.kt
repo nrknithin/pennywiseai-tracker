@@ -1,6 +1,6 @@
 package com.example.ui
 
-import com.pennywiseai.parser.core.ParsedTransaction
+import com.nrknithin.fintrack.parser.core.ParsedTransaction
 import com.example.ui.SharedComponents.commonHead
 import com.example.ui.SharedComponents.commonStyles
 import com.example.ui.SharedComponents.siteHeader

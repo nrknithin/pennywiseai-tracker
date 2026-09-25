@@ -2,7 +2,7 @@ import Foundation
 import Shared
 
 class SubscriptionsViewModel: ObservableObject {
-    private let facade = PennyWiseSharedFacade.companion.shared
+    private let facade = FinTrackSharedFacade.companion.shared
 
     @Published var subscriptions: [SharedSubscriptionItem] = []
     @Published var categories: [String] = []

@@ -1,8 +1,8 @@
-# PennyWise Design System
+# FinTrack Design System
 
 Material 3 (Expressive), with a small set of app-specific tokens and components
 layered on top. This document describes what is **actually implemented** — if
-the code and this file disagree, the code in `app/src/main/java/com/pennywiseai/tracker/ui/theme/`
+the code and this file disagree, the code in `app/src/main/java/com/nrknithin/fintrack/ui/theme/`
 is the source of truth and this file is the bug.
 
 ## The one rule
@@ -18,7 +18,7 @@ The tokens live in four files:
 | `theme/Spacing.kt` | The raw 4dp scale + `Spacing.Layout.*` semantic gaps |
 | `theme/Dimensions.kt` | Semantic sizes: padding, icons, elevation, component metrics |
 | `theme/Type.kt` | The Material type scale (tuned — see below) |
-| `theme/TextStyles.kt` | `PennyWiseText.*` — money, row, chart and label styles |
+| `theme/TextStyles.kt` | `FinTrackText.*` — money, row, chart and label styles |
 
 ---
 
@@ -156,7 +156,7 @@ at making hierarchy readable in a dense, number-heavy UI:
 | `labelLarge` | Buttons, prominent inline actions |
 | `labelMedium` / `Small` | Chips, badges, axis ticks, overlines |
 
-### `PennyWiseText` — named styles
+### `FinTrackText` — named styles
 
 Derived from the theme typography (so they follow the user's font choice), for
 the jobs the plain roles don't cover:
@@ -185,7 +185,7 @@ Reference `MaterialTheme.shapes.*` rather than re-typing
 
 ## Components
 
-### `PennyWiseCardV2` — the standard card
+### `FinTrackCardV2` — the standard card
 
 One card style everywhere: `shapes.large`, `surfaceContainerLow` fill, no
 elevation, and — in **dark mode only** — a 0.5dp hairline so the card separates
@@ -229,7 +229,7 @@ Helpers:
 ### `ListItemCardV2` / `TransactionItem` — transaction rows
 
 Leading avatar (`Icon.list`), title + one metadata line, trailing amount in
-`PennyWiseText.amountRow`. The subtitle here stays `bodySmall` on purpose: it's a
+`FinTrackText.amountRow`. The subtitle here stays `bodySmall` on purpose: it's a
 joined metadata string ("9 Jan · 3:42 PM · Food · Bal ₹1,234"), not prose.
 
 `TransactionItemSkeleton` derives its geometry from the same tokens, so rows
@@ -243,14 +243,14 @@ actionable". The accent belongs to the `action` slot on the right, which *is* a
 control. A fixed minimum height keeps headers with a "View All" link the same
 height as headers without one.
 
-### `PennyWiseEmptyState`
+### `FinTrackEmptyState`
 
 Tonal icon circle → headline → one line of explanation → optional action.
 Spacing is deliberately **uneven** (icon→headline gap larger than
 headline→description) so the three read as one grouped unit. The description is
 width-capped so centred text doesn't wrap into an awkward shape.
 
-### `PennyWiseScaffold` / `CustomTitleTopAppBar`
+### `FinTrackScaffold` / `CustomTitleTopAppBar`
 
 All screens use one of these for consistent system-bar and app-bar handling.
 App-bar titles use `titleLarge` (collapsed) and `headlineMedium` (expanded).
@@ -286,7 +286,7 @@ light/dark automatically.
 @Preview(name = "Dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 private fun ComponentPreview() {
-    PennyWiseTheme { /* component */ }
+    FinTrackTheme { /* component */ }
 }
 ```
 

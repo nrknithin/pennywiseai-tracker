@@ -4,12 +4,12 @@ import SwiftUI
 extension SharedCategoryItem: @retroactive Identifiable {}
 
 struct CategoriesScreen: View {
-    let facade: PennyWiseSharedFacade
+    let facade: FinTrackSharedFacade
     @StateObject private var viewModel: CategoriesViewModel
     @State private var showAddCategory = false
     @State private var editingCategory: SharedCategoryItem?
 
-    init(facade: PennyWiseSharedFacade) {
+    init(facade: FinTrackSharedFacade) {
         self.facade = facade
         _viewModel = StateObject(wrappedValue: CategoriesViewModel(facade: facade))
     }

@@ -94,7 +94,7 @@ enum DatePeriodFilter: String, CaseIterable {
 // MARK: - TransactionListView
 
 struct TransactionListView: View {
-    private let facade: PennyWiseSharedFacade
+    private let facade: FinTrackSharedFacade
 
     @State private var transactions: [SharedRecentTransactionItem] = []
     @State private var searchText = ""
@@ -113,7 +113,7 @@ struct TransactionListView: View {
     @State private var csvFileURL: URL? = nil
     @State private var showShareSheet = false
 
-    init(facade: PennyWiseSharedFacade) {
+    init(facade: FinTrackSharedFacade) {
         self.facade = facade
     }
 

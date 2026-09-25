@@ -35,7 +35,7 @@ struct BudgetCategoryBreakdown: Identifiable {
 }
 
 class BudgetViewModel: ObservableObject {
-    private let facade = PennyWiseSharedFacade.companion.shared
+    private let facade = FinTrackSharedFacade.companion.shared
 
     @Published var budgets: [BudgetItem] = []
     @Published var selectedBudget: BudgetItem?

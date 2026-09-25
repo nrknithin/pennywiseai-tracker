@@ -1,7 +1,7 @@
-import com.pennywiseai.parser.core.TransactionType
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestUtils
-import com.pennywiseai.parser.core.test.SimpleTestCase
+import com.nrknithin.fintrack.parser.core.TransactionType
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.SimpleTestCase
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
 import java.math.BigDecimal
@@ -9,7 +9,7 @@ import java.math.BigDecimal
 /**
  * Regressions from user-submitted SMS reports. Each case is a message that was
  * parsed wrongly in the wild — booked money that never moved, or read the wrong
- * figure out of the message. Routed through [com.pennywiseai.parser.core.bank.BankParserFactory]
+ * figure out of the message. Routed through [com.nrknithin.fintrack.parser.core.bank.BankParserFactory]
  * so the sender→parser dispatch is covered too.
  */
 class SmsReportRegressionTest {

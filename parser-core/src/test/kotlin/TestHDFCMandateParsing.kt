@@ -1,7 +1,7 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.TestResult
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.TestResult
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.DynamicTest.dynamicTest
 import org.junit.jupiter.api.TestFactory

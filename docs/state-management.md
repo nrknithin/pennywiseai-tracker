@@ -1,7 +1,7 @@
-# PennyWise State Management Guide
+# FinTrack State Management Guide
 
 ## Overview
-PennyWise uses the modern Android state management approach with:
+FinTrack uses the modern Android state management approach with:
 - **ViewModel + StateFlow** for UI state
 - **DataStore** for persistent preferences
 - **Unidirectional Data Flow (UDF)** pattern
@@ -9,7 +9,7 @@ PennyWise uses the modern Android state management approach with:
 
 The snippets below are trimmed for reading. The real files are
 `data/preferences/UserPreferencesRepository.kt`, `ui/viewmodel/ThemeViewModel.kt`,
-and `PennyWiseApp.kt` — the patterns match, the field lists don't.
+and `FinTrackApp.kt` — the patterns match, the field lists don't.
 
 ## Architecture
 
@@ -70,8 +70,8 @@ class ThemeViewModel @Inject constructor(
 ```
 
 The production `ThemeUiState` carries more than theme flags — theme style,
-accent color, AMOLED mode, app font, blur effects. `PennyWiseApp` forwards all
-of it into the `PennyWiseTheme(...)` call.
+accent color, AMOLED mode, app font, blur effects. `FinTrackApp` forwards all
+of it into the `FinTrackTheme(...)` call.
 
 ### 3. UI Layer (Composables)
 ```kotlin
@@ -126,9 +126,9 @@ fun StatelessCounter(
 
 ### 3. App-Wide State Management
 ```kotlin
-// PennyWiseApp.kt
+// FinTrackApp.kt
 @Composable
-fun PennyWiseApp() {
+fun FinTrackApp() {
     val themeViewModel: ThemeViewModel = hiltViewModel()
     val themeUiState by themeViewModel.themeUiState.collectAsStateWithLifecycle()
     
@@ -138,7 +138,7 @@ fun PennyWiseApp() {
         else -> themeUiState.isDarkTheme
     }
     
-    PennyWiseTheme(
+    FinTrackTheme(
         darkTheme = darkTheme,
         dynamicColor = themeUiState.isDynamicColorEnabled
     ) {

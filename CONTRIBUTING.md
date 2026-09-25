@@ -25,7 +25,7 @@ Thank you for your interest in contributing to PennyWise AI! We welcome contribu
 
 To add support for a new bank:
 
-1. Create a new parser class in `parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/`
+1. Create a new parser class in `parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/`
 2. Extend the right base class: `BaseIndianBankParser` for Indian banks, `UAEBankParser` for UAE banks, `BaseIranianBankParser` / `BaseThailandBankParser` for those markets, plain `BankParser` otherwise
 3. Implement the required methods (`parse()` has a default implementation you only override when the bank needs custom parsing):
    ```kotlin
@@ -96,7 +96,7 @@ PennyWise is a multi-module project (`settings.gradle.kts` includes `:app`, `:pa
 
 ```
 app/                  # Android app (Compose UI, Room, Hilt)
-└── src/main/java/com/pennywiseai/tracker/
+└── src/main/java/com/nrknithin/fintrack/
     ├── data/             # Database, repositories, managers
     ├── domain/           # Use cases and services
     ├── presentation/     # Feature screens + ViewModels

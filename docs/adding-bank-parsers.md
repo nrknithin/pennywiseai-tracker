@@ -6,7 +6,7 @@ trivial tweak, prefer the **`parser-author`** subagent, which owns this
 end-to-end (read samples → write/extend parser → tests → register → run tests).
 
 ## Where parsers live
-`parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/`
+`parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/`
 
 ## Base class — pick the right one
 All parsers extend `BankParser`. But:
@@ -46,12 +46,12 @@ comments inside the file explain existing precedence rules; keep them accurate.
 
 ## Return type & imports (parser-core)
 Use `ParsedTransaction` from parser-core:
-- `com.pennywiseai.parser.core.TransactionType`
-- `com.pennywiseai.parser.core.ParsedTransaction`
+- `com.nrknithin.fintrack.parser.core.TransactionType`
+- `com.nrknithin.fintrack.parser.core.ParsedTransaction`
 - `java.math.BigDecimal` for amounts
 
 ## Using a parser result in the app
-Convert with `com.pennywiseai.tracker.data.mapper.toEntity()`, which maps
+Convert with `com.nrknithin.fintrack.data.mapper.toEntity()`, which maps
 `ParsedTransaction` → `TransactionEntity` and handles cross-module type
 conversions.
 
