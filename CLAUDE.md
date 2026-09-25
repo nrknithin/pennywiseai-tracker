@@ -96,7 +96,16 @@ part of the gate — don't use them to verify.
 `parser-author` (write/fix a parser end-to-end) · `parser-triage` (assess a
 fresh `[BANK]` issue).
 
-## Releasing
+## Installing (this fork)
+FinTrack is never published. The owner runs the **F-Droid flavor release build**
+(everything unlocked, no Play Billing): `./gradlew :app:assembleFdroidRelease`,
+then `adb install -r --user 0 app/build/outputs/apk/fdroid/release/app-fdroid-release.apk`.
+Every build type uses `com.nrknithin.fintrack` (no `.debug` suffix). Release
+builds are signed with the `RELEASE_*` keystore from `local.properties` if set,
+otherwise the local debug key — so the upstream release flow below, which
+expects an unsigned F-Droid APK, no longer applies as-is.
+
+## Releasing (upstream flow)
 For a routine release: merge the PRs, then — from an up-to-date `main` with a
 clean tree — run `./scripts/release.sh patch|minor|major --yes` (preview first
 with `--dry-run`). It commits/tags the current branch and pushes `main`, so the

@@ -22,7 +22,7 @@ in-app *Settings → Language* row opens that screen). Android 12 and below
 follow the device language.
 
 **Checking a screen for hardcoded text:** debug builds enable pseudo-locales.
-`adb shell cmd locale set-app-locales com.nrknithin.fintrack.debug --locales en-XA`
+`adb shell cmd locale set-app-locales com.nrknithin.fintrack --locales en-XA`
 renders every extracted string as `[Šéţţîñĝš one two]`; anything still plain
 English is hardcoded. `ar-XB` checks RTL. Reset with `--locales ""`.
 
