@@ -114,6 +114,10 @@
     <string name="settings_change_backup_folder_subtitle">Pick a different folder for automatic backups</string>
     <string name="settings_import_data_title">Import Data</string>
     <string name="settings_import_data_subtitle">Restore data from backup</string>
+    <string name="settings_import_mode_title">Import backup</string>
+    <string name="settings_import_mode_body">Merge adds what\'s new and keeps everything already in FinTrack. Replace deletes FinTrack\'s current data and restores this backup exactly.</string>
+    <string name="settings_import_mode_merge">Merge</string>
+    <string name="settings_import_mode_replace">Replace everything</string>
     <string name="settings_import_csv_title">Import Transactions (CSV)</string>
     <string name="settings_import_csv_subtitle">Import from a FinTrack CSV export</string>
     <string name="settings_import_statement_title">Import Statement</string>

@@ -764,11 +764,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
     
-    fun importBackup(uri: android.net.Uri) {
+    /** [strategy]: MERGE adds to what's here; REPLACE_ALL restores the backup exactly. */
+    fun importBackup(uri: android.net.Uri, strategy: ImportStrategy = ImportStrategy.MERGE) {
         viewModelScope.launch {
             try {
                 _importExportMessage.value = UiText.Res(R.string.settings_importing_backup)
-                val result = backupImporter.importBackup(uri, ImportStrategy.MERGE)
+                val result = backupImporter.importBackup(uri, strategy)
                 when (result) {
                     is ImportResult.Success -> {
                         val counts = listOf(result.importedTransactions, result.importedCategories, result.skippedDuplicates)

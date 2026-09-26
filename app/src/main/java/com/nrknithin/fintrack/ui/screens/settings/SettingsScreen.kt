@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import com.nrknithin.fintrack.data.backup.ImportStrategy
 import com.nrknithin.fintrack.domain.model.BudgetCycle
 import com.nrknithin.fintrack.ui.effects.overScrollVertical
 import com.nrknithin.fintrack.data.database.entity.AccountBalanceEntity
@@ -177,13 +178,11 @@ fun SettingsScreen(
     }
 
     // File picker for import
+    // Picked backup waiting for the user to choose Merge or Replace.
+    var pendingBackupUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
-        onResult = { uri ->
-            uri?.let {
-                settingsViewModel.importBackup(it)
-            }
-        }
+        onResult = { uri -> pendingBackupUri = uri }
     )
 
     // File picker for CSV transaction import
@@ -1027,6 +1026,42 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showBudgetCycleDialog = false }) {
+                    Text(stringResource(R.string.settings_action_cancel))
+                }
+            }
+        )
+    }
+
+    pendingBackupUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingBackupUri = null },
+            title = { Text(stringResource(R.string.settings_import_mode_title)) },
+            text = { Text(stringResource(R.string.settings_import_mode_body)) },
+            confirmButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            pendingBackupUri = null
+                            settingsViewModel.importBackup(uri, ImportStrategy.REPLACE_ALL)
+                        }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_import_mode_replace),
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            pendingBackupUri = null
+                            settingsViewModel.importBackup(uri, ImportStrategy.MERGE)
+                        }
+                    ) {
+                        Text(stringResource(R.string.settings_import_mode_merge))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingBackupUri = null }) {
                     Text(stringResource(R.string.settings_action_cancel))
                 }
             }
