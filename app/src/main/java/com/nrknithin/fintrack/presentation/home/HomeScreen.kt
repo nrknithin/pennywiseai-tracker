@@ -105,6 +105,7 @@ import com.nrknithin.fintrack.ui.components.profileFilterIcon
 import com.nrknithin.fintrack.ui.components.CoverGradientBanner
 import com.nrknithin.fintrack.ui.components.CustomTitleTopAppBar
 import com.nrknithin.fintrack.ui.components.GreetingCard
+import com.nrknithin.fintrack.ui.bottomBarClearance
 import com.nrknithin.fintrack.ui.effects.overScrollVertical
 import com.nrknithin.fintrack.ui.effects.rememberOverscrollFlingBehavior
 import com.nrknithin.fintrack.ui.theme.*
@@ -275,6 +276,10 @@ fun HomeScreen(
         }
     }
     
+    // The bottom nav MainScreen overlays on this screen, as actually laid out: its style's
+    // height plus the system navigation bar. FABs, list end and snackbars sit above it.
+    val navBarClearance = bottomBarClearance()
+
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehaviorLarge.nestedScrollConnection),
         containerColor = Color.Transparent,
@@ -284,7 +289,7 @@ fun HomeScreen(
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
-                modifier = Modifier.padding(bottom = Dimensions.Component.bottomBarHeight)
+                modifier = Modifier.padding(bottom = navBarClearance)
             )
         },
         topBar = {
@@ -432,8 +437,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(
                 top = Dimensions.Padding.content + paddingValues.calculateTopPadding(),
                 // Clears the nav bar plus the Add + Sync FAB stack above it.
-                bottom = Dimensions.Component.bottomBarHeight +
-                    Dimensions.Component.fabScrollClearance
+                bottom = navBarClearance + Dimensions.Component.fabScrollClearance
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
@@ -995,7 +999,7 @@ fun HomeScreen(
                 .align(Alignment.BottomEnd)
                 .padding(
                     end = Dimensions.Padding.content,
-                    bottom = Dimensions.Component.fabBottomInset
+                    bottom = navBarClearance + Spacing.md
                 ),
             verticalArrangement = Arrangement.spacedBy(Spacing.smd),
             horizontalAlignment = Alignment.End
