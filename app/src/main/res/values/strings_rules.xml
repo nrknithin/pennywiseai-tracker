@@ -120,7 +120,7 @@
     <string name="onboarding_welcome_title">Welcome to FinTrack</string>
     <string name="onboarding_welcome_body">Your AI-powered expense tracker that automatically detects transactions from SMS messages.</string>
     <string name="onboarding_setup_heading">What you\'ll set up:</string>
-    <string name="onboarding_setup_steps">1. Your profile\n2. SMS permissions for auto-detection\n3. Initial transaction scan\n4. Your main bank account</string>
+    <string name="onboarding_setup_steps">1. Your profile\n2. SMS permissions for auto-detection\n3. How far back to scan\n4. Initial transaction scan\n5. Your main bank account</string>
     <string name="onboarding_name_title">What should we call you?</string>
     <string name="onboarding_name_label">Your name</string>
     <string name="onboarding_avatar_title">Choose an avatar</string>
@@ -132,6 +132,9 @@
     <string name="onboarding_permission_body">FinTrack can automatically detect and categorize your bank transactions from SMS messages.</string>
     <string name="onboarding_permission_granted">Permissions granted! Tap Continue to proceed.</string>
     <string name="onboarding_enable_permissions">Enable Permissions</string>
+    <string name="onboarding_scan_period_title">How far back should we scan?</string>
+    <string name="onboarding_scan_period_body">FinTrack reads your bank SMS from this point up to today. Choose now, so the first scan covers the history you want.</string>
+    <string name="onboarding_scan_period_hint">Longer periods take longer to scan. You can change this later in Settings → SMS Scan Period.</string>
     <string name="onboarding_scan_in_progress">Scanning your messages...</string>
     <plurals name="onboarding_scan_processed">
         <item quantity="one">%1$d / %2$d message processed</item>

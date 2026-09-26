@@ -10,6 +10,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.nrknithin.fintrack.data.database.entity.AccountBalanceEntity
 import com.nrknithin.fintrack.data.manager.SmsScanManager
+import com.nrknithin.fintrack.data.manager.SmsScanParamsCalculator
 import com.nrknithin.fintrack.data.preferences.UserPreferencesRepository
 import com.nrknithin.fintrack.ui.components.AvatarHelper
 import com.nrknithin.fintrack.data.repository.AccountBalanceRepository
@@ -33,8 +34,22 @@ enum class OnBoardingStep {
     WELCOME,
     PROFILE,
     PERMISSIONS,
+    SCAN_PERIOD,
     SMS_SCAN,
     ACCOUNT_SETUP
+}
+
+/**
+ * How far back the SMS scan reads — the same choice as Settings → SMS Scan Period.
+ * Asked before the first scan, since picking a longer period afterwards means a rescan.
+ */
+data class ScanPeriodChoice(
+    val allTime: Boolean = true,
+    val months: Int = 3,
+    val useCustomDate: Boolean = false,
+    val customDateMillis: Long? = null
+) {
+    val isComplete: Boolean get() = !useCustomDate || customDateMillis != null
 }
 
 data class OnBoardingUiState(
@@ -45,6 +60,9 @@ data class OnBoardingUiState(
     val selectedBackgroundColor: Int = 0,
     val smsPermissionGranted: Boolean = false,
     val smsPermissionSkipped: Boolean = false,
+    val scanPeriod: ScanPeriodChoice = ScanPeriodChoice(),
+    // The period the last onboarding scan used, so a Back → change → Continue rescans.
+    val scannedPeriod: ScanPeriodChoice? = null,
     val isScanning: Boolean = false,
     val scanTotal: Int = 0,
     val scanProcessed: Int = 0,
@@ -89,6 +107,19 @@ class OnBoardingViewModel @Inject constructor(
         0xFF8C8FA1.toInt(), // Overlay1
         0xFFACB0BE.toInt()  // Overlay2
     )
+
+    init {
+        viewModelScope.launch {
+            val allTime = userPreferencesRepository.smsScanAllTime.first()
+            val choice = ScanPeriodChoice(
+                allTime = allTime,
+                months = userPreferencesRepository.smsScanMonths.first(),
+                useCustomDate = !allTime && userPreferencesRepository.smsScanUseCustomDate.first(),
+                customDateMillis = userPreferencesRepository.smsScanCustomDate.first()
+            )
+            _uiState.update { it.copy(scanPeriod = choice) }
+        }
+    }
 
     fun updateUserName(name: String) {
         _uiState.update { it.copy(userName = name) }
@@ -144,12 +175,13 @@ class OnBoardingViewModel @Inject constructor(
             OnBoardingStep.PROFILE -> OnBoardingStep.PERMISSIONS
             OnBoardingStep.PERMISSIONS -> {
                 if (_uiState.value.smsPermissionGranted) {
-                    OnBoardingStep.SMS_SCAN
+                    OnBoardingStep.SCAN_PERIOD
                 } else {
-                    // Skip scan step if permissions not granted
+                    // Skip the scan steps if permissions not granted
                     OnBoardingStep.ACCOUNT_SETUP
                 }
             }
+            OnBoardingStep.SCAN_PERIOD -> OnBoardingStep.SMS_SCAN
             OnBoardingStep.SMS_SCAN -> OnBoardingStep.ACCOUNT_SETUP
             OnBoardingStep.ACCOUNT_SETUP -> OnBoardingStep.ACCOUNT_SETUP // Already last
         }
@@ -162,7 +194,8 @@ class OnBoardingViewModel @Inject constructor(
             OnBoardingStep.WELCOME -> OnBoardingStep.WELCOME
             OnBoardingStep.PROFILE -> OnBoardingStep.WELCOME
             OnBoardingStep.PERMISSIONS -> OnBoardingStep.PROFILE
-            OnBoardingStep.SMS_SCAN -> OnBoardingStep.PERMISSIONS
+            OnBoardingStep.SCAN_PERIOD -> OnBoardingStep.PERMISSIONS
+            OnBoardingStep.SMS_SCAN -> OnBoardingStep.SCAN_PERIOD
             OnBoardingStep.ACCOUNT_SETUP -> {
                 if (_uiState.value.smsPermissionGranted) {
                     OnBoardingStep.SMS_SCAN
@@ -174,9 +207,61 @@ class OnBoardingViewModel @Inject constructor(
         _uiState.update { it.copy(currentStep = previousStep) }
     }
 
+    fun selectScanAllTime() {
+        _uiState.update { it.copy(scanPeriod = it.scanPeriod.copy(allTime = true, useCustomDate = false)) }
+    }
+
+    fun selectScanMonths(months: Int) {
+        _uiState.update {
+            it.copy(scanPeriod = it.scanPeriod.copy(allTime = false, useCustomDate = false, months = months))
+        }
+    }
+
+    /** [pickerMillis] is the DatePicker's UTC-midnight value for the chosen day. */
+    fun selectScanCustomDate(pickerMillis: Long) {
+        val startOfDay = SmsScanParamsCalculator.normalizePickerDateToLocalStartOfDay(pickerMillis)
+        _uiState.update {
+            it.copy(
+                scanPeriod = it.scanPeriod.copy(
+                    allTime = false,
+                    useCustomDate = true,
+                    customDateMillis = startOfDay
+                )
+            )
+        }
+    }
+
+    /**
+     * Saves the chosen period where the scan worker reads it, then moves on to the scan.
+     * Coming back after a finished scan with a different period re-arms the scan step.
+     */
+    fun confirmScanPeriod() {
+        viewModelScope.launch {
+            val state = _uiState.value
+            val period = state.scanPeriod
+            val periodChanged = state.scannedPeriod != null && state.scannedPeriod != period
+            userPreferencesRepository.updateSmsScanAllTime(period.allTime)
+            userPreferencesRepository.updateSmsScanUseCustomDate(period.useCustomDate)
+            userPreferencesRepository.updateSmsScanMonths(period.months)
+            period.customDateMillis?.let { userPreferencesRepository.updateSmsScanCustomDate(it) }
+            if (periodChanged) {
+                // Zero timestamp = the next scan reads the whole new period.
+                userPreferencesRepository.setLastScanTimestamp(0L)
+            }
+            _uiState.update {
+                it.copy(
+                    currentStep = OnBoardingStep.SMS_SCAN,
+                    scanCompleted = it.scanCompleted && !periodChanged
+                )
+            }
+        }
+    }
+
     fun startSmsScan() {
         smsScanManager.startSmsLoggingScan()
-        _uiState.update { it.copy(isScanning = true, scanCompleted = false) }
+        _uiState.update {
+            it.copy(isScanning = true, scanCompleted = false, scannedPeriod = it.scanPeriod)
+        }
         observeScanProgress()
     }
 

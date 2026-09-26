@@ -40,10 +40,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -51,11 +55,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +73,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -77,6 +89,11 @@ import com.nrknithin.fintrack.ui.theme.Dimensions
 import com.nrknithin.fintrack.ui.theme.FinTrackText
 import com.nrknithin.fintrack.ui.theme.Spacing
 import com.nrknithin.fintrack.ui.theme.income
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun OnBoardingScreen(
@@ -98,6 +115,7 @@ fun OnBoardingScreen(
                         OnBoardingStep.WELCOME -> viewModel.goToNextStep()
                         OnBoardingStep.PROFILE -> viewModel.goToNextStep()
                         OnBoardingStep.PERMISSIONS -> viewModel.goToNextStep()
+                        OnBoardingStep.SCAN_PERIOD -> viewModel.confirmScanPeriod()
                         OnBoardingStep.SMS_SCAN -> viewModel.goToNextStep()
                         OnBoardingStep.ACCOUNT_SETUP -> {
                             viewModel.completeOnboarding(onOnboardingComplete)
@@ -146,6 +164,12 @@ fun OnBoardingScreen(
                 OnBoardingStep.PERMISSIONS -> PermissionsStep(
                     uiState = uiState,
                     onPermissionResult = { viewModel.onSmsPermissionResult(it) }
+                )
+                OnBoardingStep.SCAN_PERIOD -> ScanPeriodStep(
+                    period = uiState.scanPeriod,
+                    onSelectAllTime = { viewModel.selectScanAllTime() },
+                    onSelectMonths = { viewModel.selectScanMonths(it) },
+                    onSelectCustomDate = { viewModel.selectScanCustomDate(it) }
                 )
                 OnBoardingStep.SMS_SCAN -> SmsScanStep(uiState = uiState)
                 OnBoardingStep.ACCOUNT_SETUP -> AccountSetupStep(
@@ -512,6 +536,185 @@ private fun PermissionsStep(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScanPeriodStep(
+    period: ScanPeriodChoice,
+    onSelectAllTime: () -> Unit,
+    onSelectMonths: (Int) -> Unit,
+    onSelectCustomDate: (Long) -> Unit
+) {
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .overScrollVertical()
+            .verticalScroll(rememberScrollState())
+            .padding(Spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(Spacing.xl))
+
+        Icon(
+            imageVector = Icons.Default.CalendarMonth,
+            contentDescription = null,
+            modifier = Modifier.size(HERO_ICON_SIZE_SMALL),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(Spacing.lg))
+
+        Text(
+            text = stringResource(R.string.onboarding_scan_period_title),
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(Spacing.md))
+
+        Text(
+            text = stringResource(R.string.onboarding_scan_period_body),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(Spacing.lg))
+
+        ScanPeriodOption(
+            label = stringResource(R.string.settings_sms_scan_all_time),
+            selected = period.allTime,
+            onClick = onSelectAllTime
+        )
+        SCAN_PERIOD_MONTH_OPTIONS.forEach { months ->
+            ScanPeriodOption(
+                label = if (months >= 24 && months % 12 == 0) {
+                    pluralStringResource(R.plurals.settings_sms_scan_option_years, months / 12, months / 12)
+                } else {
+                    pluralStringResource(R.plurals.settings_sms_scan_option_months, months, months)
+                },
+                selected = !period.allTime && !period.useCustomDate && period.months == months,
+                onClick = { onSelectMonths(months) }
+            )
+        }
+        val customDate = period.customDateMillis?.takeIf { period.useCustomDate }
+        ScanPeriodOption(
+            label = if (customDate != null) {
+                stringResource(R.string.settings_sms_scan_option_custom_with_date, formatScanStartDate(customDate))
+            } else {
+                stringResource(R.string.settings_sms_scan_option_custom)
+            },
+            selected = period.useCustomDate,
+            onClick = { showDatePicker = true }
+        )
+
+        Spacer(modifier = Modifier.height(Spacing.md))
+
+        Text(
+            text = stringResource(R.string.onboarding_scan_period_hint),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    if (showDatePicker) {
+        // DatePicker speaks UTC midnight; the stored start date is local start of day.
+        val todayUtc = LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val initialDate = period.customDateMillis
+            ?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate() }
+            ?: LocalDate.now().minusMonths(3)
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis <= todayUtc
+            }
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        datePickerState.selectedDateMillis?.let(onSelectCustomDate)
+                        showDatePicker = false
+                    }
+                ) {
+                    Text(stringResource(R.string.settings_action_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text(stringResource(R.string.settings_action_cancel))
+                }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+}
+
+@Composable
+private fun ScanPeriodOption(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected)
+                MaterialTheme.colorScheme.primaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        border = if (selected) BorderStroke(
+            Spacing.xxs,
+            MaterialTheme.colorScheme.primary
+        ) else null,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Spacing.xs)
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+            }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.md)
+                .defaultMinSize(minHeight = Dimensions.Component.minTouchTarget),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (selected)
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                else
+                    MaterialTheme.colorScheme.onSurface
+            )
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = stringResource(R.string.onboarding_selected_cd),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(Dimensions.Icon.inline)
+                )
+            }
+        }
+    }
+}
+
+private fun formatScanStartDate(dateMillis: Long): String =
+    Instant.ofEpochMilli(dateMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
+        .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
 
 @Composable
 private fun SmsScanStep(uiState: OnBoardingUiState) {
@@ -880,6 +1083,15 @@ private fun OnBoardingBottomBar(
                     }
                 }
 
+                OnBoardingStep.SCAN_PERIOD -> {
+                    Button(
+                        onClick = onNext,
+                        enabled = uiState.scanPeriod.isComplete
+                    ) {
+                        Text(stringResource(R.string.onboarding_continue))
+                    }
+                }
+
                 OnBoardingStep.SMS_SCAN -> {
                     if (!uiState.isScanning && !uiState.scanCompleted) {
                         TextButton(onClick = onSkip) {
@@ -936,6 +1148,8 @@ private fun OnBoardingBottomBar(
 private val HERO_ICON_SIZE = 100.dp
 private val HERO_ICON_SIZE_SMALL = 80.dp
 private val OPTION_TILE_SIZE = 72.dp
+// Same month choices as Settings → SMS Scan Period (24 shows as "2 years").
+private val SCAN_PERIOD_MONTH_OPTIONS = listOf(1, 2, 3, 6, 12, 24)
 private val SELECTION_RING_WIDTH = 3.dp
 private val STEP_DOT_ACTIVE = Spacing.sm
 private val STEP_DOT_INACTIVE = 6.dp
