@@ -39,6 +39,11 @@ class FinTrackApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var scheduledFolderBackupScheduler: com.nrknithin.fintrack.backup.folder.ScheduledFolderBackupScheduler
 
+    // Injected so its list of payday holidays reaches BudgetCycle before any screen
+    // computes a budget window.
+    @Inject
+    lateinit var paydayHolidaysStore: com.nrknithin.fintrack.data.preferences.PaydayHolidaysStore
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activityReferences = 0
     private var isInForeground = false

@@ -53,6 +53,14 @@
     <string name="settings_budget_cycle_title">Budget Cycle Start Day</string>
     <string name="settings_budget_cycle_subtitle">Shifts the start of each monthly budget period; e.g. 25 means your cycle runs 25th → 24th</string>
     <string name="settings_budget_cycle_dialog_body">Pick the day each monthly budget cycle starts. e.g. 25 means the cycle runs from the 25th through the 24th of the next month.</string>
+    <string name="settings_budget_cycle_last_working_day">Last working day</string>
+    <string name="settings_budget_cycle_last_working_day_hint">Payday on the last Monday–Friday of the month, earlier if that day is a payday holiday</string>
+    <string name="settings_payday_holidays_title">Payday holidays</string>
+    <string name="settings_payday_holidays_subtitle">Bank holidays that move a last-working-day payday earlier</string>
+    <string name="settings_payday_holidays_empty">No holidays added. Weekends are skipped automatically.</string>
+    <string name="settings_payday_holidays_add">Add holiday</string>
+    <!-- %1$s = holiday date -->
+    <string name="settings_payday_holidays_remove_cd">Remove %1$s</string>
 
     <!-- Contacts -->
     <string name="settings_contacts_section">Contacts</string>

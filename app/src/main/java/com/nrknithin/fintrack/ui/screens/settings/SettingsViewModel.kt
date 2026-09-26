@@ -71,6 +71,7 @@ class SettingsViewModel @Inject constructor(
     private val folderBackupWriter: FolderBackupWriter,
     private val scheduledFolderBackupScheduler: ScheduledFolderBackupScheduler,
     private val contactsResolver: com.nrknithin.fintrack.data.contacts.ContactsResolver,
+    private val paydayHolidaysStore: com.nrknithin.fintrack.data.preferences.PaydayHolidaysStore,
     entitlementGate: EntitlementGate,
 ) : ViewModel() {
 
@@ -178,9 +179,13 @@ class SettingsViewModel @Inject constructor(
     // Number format style (digit grouping: Auto / Indian / International)
     val numberFormatStyle = userPreferencesRepository.numberFormatStyle
 
-    // Budget cycle start day (1..31). Drives Home/Budgets/Analytics so a user
-    // whose salary doesn't land on the 1st can define their own pay cycle.
+    // Budget cycle start day (1..31, or BudgetCycle.LAST_WORKING_DAY). Drives
+    // Home/Budgets/Analytics so a user whose salary doesn't land on the 1st can
+    // define their own pay cycle.
     val budgetCycleStartDay = userPreferencesRepository.budgetCycleStartDay
+
+    // Holidays that move a last-working-day payday earlier.
+    val paydayHolidays: StateFlow<Set<java.time.LocalDate>> = paydayHolidaysStore.holidays
 
     // Main account selection (drives the default currency unless overridden above).
     val accounts: StateFlow<List<AccountBalanceEntity>> =
@@ -947,6 +952,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferencesRepository.updateBudgetCycleStartDay(day)
         }
+    }
+
+    /** [pickerMillis] is the DatePicker's UTC-midnight value for the chosen day. */
+    fun addPaydayHoliday(pickerMillis: Long) {
+        val date = java.time.Instant.ofEpochMilli(pickerMillis)
+            .atZone(java.time.ZoneOffset.UTC)
+            .toLocalDate()
+        paydayHolidaysStore.add(date)
+    }
+
+    fun removePaydayHoliday(date: java.time.LocalDate) {
+        paydayHolidaysStore.remove(date)
     }
 
     /**

@@ -139,6 +139,8 @@
     <!-- %1$s = weekday name -->
     <string name="budget_edit_resets_every">Resets every %1$s</string>
     <string name="budget_edit_resets_on_day">Resets on day %1$d of every month</string>
+    <string name="budget_edit_resets_on_last_working_day">Resets on the last working day of every month</string>
+    <string name="budget_edit_last_working_day">Last working day</string>
     <string name="budget_edit_runs_once">Runs once, no rollover</string>
     <string name="budget_edit_current_window">Current window</string>
     <!-- %1$s = start date, %2$s = end date, %3$s = reset rule (e.g. "Resets every Monday") -->

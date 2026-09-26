@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import com.nrknithin.fintrack.domain.model.BudgetCycle
 import com.nrknithin.fintrack.ui.effects.overScrollVertical
 import com.nrknithin.fintrack.data.database.entity.AccountBalanceEntity
 import androidx.compose.material.icons.Icons
@@ -125,6 +126,7 @@ fun SettingsScreen(
     val baseCurrency by settingsViewModel.baseCurrency.collectAsStateWithLifecycle(initialValue = "")
     val numberFormatStyle by settingsViewModel.numberFormatStyle.collectAsStateWithLifecycle(initialValue = NumberFormatStyle.AUTO)
     val budgetCycleStartDay by settingsViewModel.budgetCycleStartDay.collectAsStateWithLifecycle(initialValue = 1)
+    val paydayHolidays by settingsViewModel.paydayHolidays.collectAsStateWithLifecycle()
     val importExportMessage by settingsViewModel.importExportMessage.collectAsStateWithLifecycle()
     val exportedBackupFile by settingsViewModel.exportedBackupFile.collectAsStateWithLifecycle()
     val deleteAllTransactionsCount by settingsViewModel.deleteAllTransactionsCount.collectAsStateWithLifecycle()
@@ -161,6 +163,8 @@ fun SettingsScreen(
     var showDisplayCurrencyDialog by remember { mutableStateOf(false) }
     var showNumberFormatDialog by remember { mutableStateOf(false) }
     var showBudgetCycleDialog by remember { mutableStateOf(false) }
+    var showPaydayHolidaysDialog by remember { mutableStateOf(false) }
+    var showPaydayHolidayPicker by remember { mutableStateOf(false) }
     var showCurrencyDropdown by remember { mutableStateOf(false) }
     var showMainAccountDropdown by remember { mutableStateOf(false) }
     val permissionUiState by permissionViewModel.uiState.collectAsStateWithLifecycle()
@@ -464,8 +468,22 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_budget_cycle_title),
                     subtitle = stringResource(R.string.settings_budget_cycle_subtitle),
                     onClick = { showBudgetCycleDialog = true },
-                    position = ListItemPosition.Single,
-                    trailingText = ordinalSuffix(budgetCycleStartDay)
+                    position = ListItemPosition.Top,
+                    trailingText = if (budgetCycleStartDay == BudgetCycle.LAST_WORKING_DAY) {
+                        stringResource(R.string.settings_budget_cycle_last_working_day)
+                    } else {
+                        ordinalSuffix(budgetCycleStartDay)
+                    }
+                )
+                SettingsNavItem(
+                    icon = Icons.Default.EventBusy,
+                    iconBgColor = teal_light,
+                    iconTint = teal_dark,
+                    title = stringResource(R.string.settings_payday_holidays_title),
+                    subtitle = stringResource(R.string.settings_payday_holidays_subtitle),
+                    onClick = { showPaydayHolidaysDialog = true },
+                    position = ListItemPosition.Bottom,
+                    trailingText = paydayHolidays.size.takeIf { it > 0 }?.toString()
                 )
             }
 
@@ -941,6 +959,42 @@ fun SettingsScreen(
                     )
                     Spacer(modifier = Modifier.height(Spacing.md))
 
+                    // Payday on the last working day: listed first so it isn't below 31 rows.
+                    val lastWorkingDay = BudgetCycle.LAST_WORKING_DAY
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = budgetCycleStartDay == lastWorkingDay,
+                                onClick = {
+                                    settingsViewModel.updateBudgetCycleStartDay(lastWorkingDay)
+                                    showBudgetCycleDialog = false
+                                }
+                            )
+                            .padding(vertical = Spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = budgetCycleStartDay == lastWorkingDay,
+                            onClick = {
+                                settingsViewModel.updateBudgetCycleStartDay(lastWorkingDay)
+                                showBudgetCycleDialog = false
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.sm))
+                        Column {
+                            Text(
+                                text = stringResource(R.string.settings_budget_cycle_last_working_day),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_budget_cycle_last_working_day_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
                     (1..31).forEach { day ->
                         Row(
                             modifier = Modifier
@@ -977,6 +1031,84 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+
+    // Payday holidays: the dates a last-working-day payday steps back past.
+    if (showPaydayHolidaysDialog) {
+        val holidayFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("EEE, d MMM yyyy") }
+        AlertDialog(
+            onDismissRequest = { showPaydayHolidaysDialog = false },
+            title = { Text(stringResource(R.string.settings_payday_holidays_title)) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = stringResource(R.string.settings_payday_holidays_subtitle),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.md))
+                    if (paydayHolidays.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.settings_payday_holidays_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    paydayHolidays.sorted().forEach { date ->
+                        val label = date.format(holidayFormatter)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { settingsViewModel.removePaydayHoliday(date) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.settings_payday_holidays_remove_cd, label)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPaydayHolidaysDialog = false }) {
+                    Text(stringResource(R.string.settings_action_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPaydayHolidayPicker = true }) {
+                    Text(stringResource(R.string.settings_payday_holidays_add))
+                }
+            }
+        )
+    }
+
+    if (showPaydayHolidayPicker) {
+        val holidayPickerState = rememberDatePickerState()
+        DatePickerDialog(
+            onDismissRequest = { showPaydayHolidayPicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        holidayPickerState.selectedDateMillis?.let { settingsViewModel.addPaydayHoliday(it) }
+                        showPaydayHolidayPicker = false
+                    }
+                ) {
+                    Text(stringResource(R.string.settings_action_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPaydayHolidayPicker = false }) {
+                    Text(stringResource(R.string.settings_action_cancel))
+                }
+            }
+        ) {
+            DatePicker(state = holidayPickerState)
+        }
     }
 
     // SMS Scan Period Dialog

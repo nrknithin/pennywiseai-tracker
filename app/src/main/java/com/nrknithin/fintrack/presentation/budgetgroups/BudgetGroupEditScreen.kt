@@ -2,6 +2,7 @@ package com.nrknithin.fintrack.presentation.budgetgroups
 
 import java.time.format.TextStyle
 import java.time.DayOfWeek
+import com.nrknithin.fintrack.domain.model.BudgetCycle
 import com.nrknithin.fintrack.R
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -314,7 +315,11 @@ fun BudgetGroupEditScreen(
                             BudgetPeriodType.WEEKLY ->
                                 stringResource(R.string.budget_edit_resets_every, dayOfWeekName(uiState.weekStartDay))
                             BudgetPeriodType.MONTHLY ->
-                                stringResource(R.string.budget_edit_resets_on_day, uiState.monthStartDay)
+                                if (uiState.monthStartDay == BudgetCycle.LAST_WORKING_DAY) {
+                                    stringResource(R.string.budget_edit_resets_on_last_working_day)
+                                } else {
+                                    stringResource(R.string.budget_edit_resets_on_day, uiState.monthStartDay)
+                                }
                             BudgetPeriodType.CUSTOM ->
                                 stringResource(R.string.budget_edit_runs_once)
                         }
@@ -896,14 +901,16 @@ private fun WeekdayAnchorRow(
 }
 
 /**
- * Monthly cadence row — stepper for 1..31. Clamps at 31 (the resolver
- * handles the Feb-30/31 case at read time).
+ * Monthly cadence row — stepper for 1..31, then "last working day" one step past
+ * 31 (the end of the month, where a payday sits). Day 31 clamps in short months at
+ * read time.
  */
 @Composable
 private fun MonthAnchorRow(
     monthStartDay: Int,
     onMonthDaySelected: (Int) -> Unit
 ) {
+    val isLastWorkingDay = monthStartDay == BudgetCycle.LAST_WORKING_DAY
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -921,7 +928,11 @@ private fun MonthAnchorRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = monthStartDay.toString(),
+                text = if (isLastWorkingDay) {
+                    stringResource(R.string.budget_edit_last_working_day)
+                } else {
+                    monthStartDay.toString()
+                },
                 style = MaterialTheme.typography.bodyLarge
             )
         }
@@ -931,15 +942,22 @@ private fun MonthAnchorRow(
         // pattern.
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedIconButton(
-                onClick = { onMonthDaySelected(monthStartDay - 1) },
-                enabled = monthStartDay > 1
+                onClick = {
+                    onMonthDaySelected(if (isLastWorkingDay) BudgetCycle.MAX_START_DAY else monthStartDay - 1)
+                },
+                enabled = isLastWorkingDay || monthStartDay > BudgetCycle.MIN_START_DAY
             ) {
                 Icon(Icons.Default.KeyboardArrowDown, contentDescription = stringResource(R.string.budget_edit_decrease_day))
             }
             Spacer(modifier = Modifier.width(Spacing.xs))
             OutlinedIconButton(
-                onClick = { onMonthDaySelected(monthStartDay + 1) },
-                enabled = monthStartDay < 31
+                onClick = {
+                    onMonthDaySelected(
+                        if (monthStartDay == BudgetCycle.MAX_START_DAY) BudgetCycle.LAST_WORKING_DAY
+                        else monthStartDay + 1
+                    )
+                },
+                enabled = !isLastWorkingDay
             ) {
                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.budget_edit_increase_day))
             }

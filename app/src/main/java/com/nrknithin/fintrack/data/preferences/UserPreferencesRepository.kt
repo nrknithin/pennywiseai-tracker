@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.nrknithin.fintrack.domain.model.BudgetCycle
 import com.nrknithin.fintrack.data.share.ShareCardConfig
 import com.nrknithin.fintrack.data.share.ShareHero
 import com.nrknithin.fintrack.data.share.SharePeriod
@@ -778,18 +779,20 @@ open class UserPreferencesRepository @Inject constructor(
 
     /**
      * Day of the month the user's budget cycle starts on. 1 = first of the month
-     * (the calendar-month default); up to 31. Stored as an Int 1..31 — out-of-range
-     * values from older builds or migrations are clamped at read time.
+     * (the calendar-month default); up to 31, or [BudgetCycle.LAST_WORKING_DAY] (-1) for
+     * a payday on the last working day. Out-of-range values from older builds or
+     * migrations are clamped at read time.
      */
     val budgetCycleStartDay: Flow<Int> = context.dataStore.data
         .map { preferences ->
-            (preferences[PreferencesKeys.BUDGET_CYCLE_START_DAY] ?: 1).coerceIn(1, 31)
+            BudgetCycle.clampStartDay(preferences[PreferencesKeys.BUDGET_CYCLE_START_DAY] ?: 1)
         }
 
     suspend fun getBudgetCycleStartDay(): Int = budgetCycleStartDay.first()
 
+    /** 1..31, or [BudgetCycle.LAST_WORKING_DAY] for a last-working-day payday. */
     suspend fun updateBudgetCycleStartDay(day: Int) {
-        val clamped = day.coerceIn(1, 31)
+        val clamped = BudgetCycle.clampStartDay(day)
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.BUDGET_CYCLE_START_DAY] = clamped
         }

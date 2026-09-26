@@ -3,6 +3,7 @@ package com.nrknithin.fintrack.presentation.budgetgroups
 import java.time.format.TextStyle
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
+import com.nrknithin.fintrack.domain.model.BudgetCycle
 import com.nrknithin.fintrack.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
@@ -670,8 +671,12 @@ private fun BudgetCard(
                         }
                     }
                     groupSpending.periodType == BudgetPeriodType.MONTHLY -> {
-                        val startDay = groupSpending.group.budget.monthStartDay
-                            ?: groupSpending.windowStart.dayOfMonth
+                        // A last-working-day cycle names the date the next cycle starts on.
+                        val startDay = when (val anchor = groupSpending.group.budget.monthStartDay) {
+                            BudgetCycle.LAST_WORKING_DAY -> groupSpending.windowEnd.plusDays(1).dayOfMonth
+                            null -> groupSpending.windowStart.dayOfMonth
+                            else -> anchor
+                        }
                         val renewalIn = (groupSpending.daysRemaining - 1).coerceAtLeast(0)
                         if (renewalIn == 0) {
                             stringResource(R.string.budgets_resets_today_monthly, startDay)
