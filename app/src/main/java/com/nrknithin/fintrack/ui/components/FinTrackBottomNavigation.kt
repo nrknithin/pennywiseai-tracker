@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
@@ -51,6 +52,24 @@ import dev.chrisbanes.haze.HazeEffectScope
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.ui.draw.BlurredEdgeTreatment
+
+/**
+ * Switches to a bottom-nav tab, saving the tab being left so it reopens as it was.
+ *
+ * The start destination (Home) is never *restored*: popping up to it with `saveState`
+ * maps Home to the tab stack that pop just saved, so a `restoreState` navigate to Home
+ * would reopen that tab instead of Home. Going Home is only the pop.
+ */
+fun NavController.navigateToTab(route: String) {
+    val isStartDestination = route == graph.startDestinationRoute
+    navigate(route) {
+        popUpTo(graph.startDestinationId) {
+            saveState = true
+        }
+        launchSingleTop = true
+        restoreState = !isStartDestination
+    }
+}
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -119,13 +138,7 @@ fun FinTrackBottomNavigation(
                         NavigationBarItem(
                             selected = selected,
                             onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                navController.navigateToTab(item.route)
                             },
                             icon = {
                                 Icon(
@@ -225,13 +238,7 @@ fun FinTrackBottomNavigation(
                         TonalToggleButton(
                             checked = selected,
                             onCheckedChange = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                navController.navigateToTab(item.route)
                             },
                             colors = ToggleButtonDefaults.toggleButtonColors(
                                 containerColor = if (blurEffects)

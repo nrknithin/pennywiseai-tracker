@@ -44,6 +44,7 @@ import com.nrknithin.fintrack.presentation.statement.ImportStatementViewModel
 import com.nrknithin.fintrack.presentation.subscriptions.SubscriptionsScreen
 import com.nrknithin.fintrack.presentation.transactions.TransactionsScreen
 import com.nrknithin.fintrack.ui.components.FinTrackBottomNavigation
+import com.nrknithin.fintrack.ui.components.navigateToTab
 import com.nrknithin.fintrack.ui.components.SpotlightTutorial
 import com.nrknithin.fintrack.ui.components.WhatsNewDialog
 import com.nrknithin.fintrack.ui.screens.settings.AppearanceScreen
@@ -104,13 +105,7 @@ fun MainScreen(
 
     // Back from non-Home tab goes to Home instead of popping (prevents overlap)
     BackHandler(enabled = !isHomeScreen) {
-        navController.navigate("home") {
-            popUpTo(navController.graph.startDestinationId) {
-                saveState = true
-            }
-            launchSingleTop = true
-            restoreState = true
-        }
+        navController.navigateToTab("home")
     }
 
     // Navigate to transactions with filter if provided
@@ -348,13 +343,7 @@ fun MainScreen(
                             onNavigateBack = {
                                 if (navController.currentBackStackEntry?.lifecycle?.currentState == androidx.lifecycle.Lifecycle.State.RESUMED) {
                                     if (!navController.popBackStack()) {
-                                        navController.navigate("home") {
-                                            popUpTo(navController.graph.startDestinationId) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                        navController.navigateToTab("home")
                                     }
                                 }
                             },
@@ -410,13 +399,7 @@ fun MainScreen(
                                 }
                             },
                             onNavigateToHome = {
-                                navController.navigate("home") {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
+                                navController.navigateToTab("home")
                             }
                         )
                     }
