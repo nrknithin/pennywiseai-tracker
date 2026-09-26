@@ -81,6 +81,14 @@ object RecurringTransactions
 @Serializable
 data class LoanDetail(val loanId: Long)
 
+/** A bank (EMI) loan — kept apart from person-to-person [LoanDetail]. */
+@Serializable
+data class BankLoanDetail(val loanId: Long)
+
+/** Add ([loanId] = -1) or edit a bank loan. */
+@Serializable
+data class BankLoanEdit(val loanId: Long = -1L)
+
 @Serializable
 object TransactionGroups
 

@@ -380,7 +380,44 @@ fun FinTrackNavHost(
                     navController.navigate(LoanDetail(loanId)) {
                         launchSingleTop = true
                     }
+                },
+                onNavigateToBankLoanDetail = { loanId ->
+                    navController.navigate(BankLoanDetail(loanId)) {
+                        launchSingleTop = true
+                    }
+                },
+                onAddBankLoan = {
+                    navController.navigate(BankLoanEdit()) {
+                        launchSingleTop = true
+                    }
                 }
+            )
+        }
+
+        composable<BankLoanDetail>(
+            enterTransition = { fadeIn(tween(300)) + slideInVertically { it / 4 } },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = { fadeIn(tween(300)) },
+            popExitTransition = { fadeOut(tween(200)) + slideOutVertically { it / 4 } }
+        ) {
+            com.nrknithin.fintrack.presentation.loans.BankLoanDetailScreen(
+                onNavigateBack = { navController.safePopBackStack() },
+                onEdit = { loanId ->
+                    navController.navigate(BankLoanEdit(loanId)) {
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+        composable<BankLoanEdit>(
+            enterTransition = { fadeIn(tween(300)) + slideInVertically { it / 4 } },
+            exitTransition = { fadeOut(tween(200)) },
+            popEnterTransition = { fadeIn(tween(300)) },
+            popExitTransition = { fadeOut(tween(200)) + slideOutVertically { it / 4 } }
+        ) {
+            com.nrknithin.fintrack.presentation.loans.BankLoanEditScreen(
+                onNavigateBack = { navController.safePopBackStack() }
             )
         }
 

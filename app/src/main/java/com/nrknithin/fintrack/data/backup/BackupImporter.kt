@@ -139,6 +139,7 @@ class BackupImporter @Inject constructor(
                 database.tagDao().deleteAllCrossRefs()
                 database.tagDao().deleteAllTags()
                 database.recurringTransactionDao().deleteAll()
+                database.bankLoanDao().deleteAll()
                 // Note: budget categories and transaction splits are deleted via cascade (budget categories via budget deletion, transaction splits via transaction deletion)
                 // Profiles deliberately preserved — defaults (Personal=1, Business=2)
                 // are seeded on first launch and we don't want to wipe them.
@@ -281,6 +282,12 @@ class BackupImporter @Inject constructor(
                             profileId = resolveProfileId(recurring.profileId) ?: 1L
                         )
                     )
+                }
+
+                // Bank loans keep their ids and their EMI reminder's id — the
+                // subscriptions above were restored with their original ids.
+                backup.database.bankLoans.insertEachCounting({ skippedRows++ }) { loan ->
+                    database.bankLoanDao().insert(loan)
                 }
 
                 // Profiles were already imported earlier (before transactions /
@@ -440,6 +447,7 @@ class BackupImporter @Inject constructor(
                 importAccountBalancesWithMerge(backup.database.accountBalances, { resolveProfileId(it) }) { skippedRows++ }
                 importSubscriptionsWithMerge(backup.database.subscriptions) { skippedRows++ }
                 importRecurringTransactionsWithMerge(backup.database.recurringTransactions, { resolveProfileId(it) }) { skippedRows++ }
+                importBankLoansWithMerge(backup.database.bankLoans) { skippedRows++ }
                 importMerchantMappingsWithMerge(backup.database.merchantMappings) { skippedRows++ }
                 importMerchantAliasesWithMerge(backup.database.merchantAliases) { skippedRows++ }
 
@@ -649,6 +657,26 @@ class BackupImporter @Inject constructor(
             t.note,
             t.profileId
         ).joinToString("|")
+    }
+
+    /**
+     * Dedup on the stable [BankLoanEntity.uid]. Subscriptions get fresh ids in a merge,
+     * so the EMI reminder is re-linked by name (an active one named like the loan);
+     * failing that the link is dropped and the next reminder sync creates one.
+     */
+    private suspend fun importBankLoansWithMerge(loans: List<BankLoanEntity>, onSkip: () -> Unit) {
+        loans.insertEachCounting(onSkip) { loan ->
+            if (loan.uid.isNotEmpty() && database.bankLoanDao().getByUid(loan.uid) != null) return@insertEachCounting
+            val reminderName = loan.name.ifBlank { loan.lender }
+            val reminderId = database.subscriptionDao().getActiveSubscriptionByMerchant(reminderName)?.id
+            database.bankLoanDao().insert(
+                loan.copy(
+                    id = 0,
+                    uid = loan.uid.ifEmpty { java.util.UUID.randomUUID().toString() },
+                    subscriptionId = reminderId
+                )
+            )
+        }
     }
 
     private suspend fun importRecurringTransactionsWithMerge(

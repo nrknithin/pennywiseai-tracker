@@ -141,6 +141,9 @@ data class BackupStatistics(
     @SerialName("total_recurring_transactions")
     val totalRecurringTransactions: Int = 0,
 
+    @SerialName("total_bank_loans")
+    val totalBankLoans: Int = 0,
+
     @SerialName("date_range")
     val dateRange: DateRange? = null
 )
@@ -236,7 +239,10 @@ data class DatabaseSnapshot(
     val transactionTagCrossRefs: List<TransactionTagCrossRef> = emptyList(),
 
     @SerialName("recurring_transactions")
-    val recurringTransactions: List<RecurringTransactionEntity> = emptyList()
+    val recurringTransactions: List<RecurringTransactionEntity> = emptyList(),
+
+    @SerialName("bank_loans")
+    val bankLoans: List<BankLoanEntity> = emptyList()
 )
 
 /**

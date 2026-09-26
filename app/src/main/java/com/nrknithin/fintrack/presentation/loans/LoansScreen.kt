@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,9 +44,15 @@ import java.math.BigDecimal
 fun LoansScreen(
     onNavigateBack: () -> Unit = {},
     onNavigateToLoanDetail: (Long) -> Unit = {},
-    viewModel: LoansViewModel = hiltViewModel()
+    onNavigateToBankLoanDetail: (Long) -> Unit = {},
+    onAddBankLoan: () -> Unit = {},
+    viewModel: LoansViewModel = hiltViewModel(),
+    bankLoansViewModel: BankLoansViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val bankState by bankLoansViewModel.uiState.collectAsStateWithLifecycle()
+    // Bank loans (EMIs) and person-to-person lending are separate sections.
+    var tab by rememberSaveable { mutableStateOf(LoansTab.BANK) }
     val scrollBehaviorSmall = TopAppBarDefaults.pinnedScrollBehavior()
     val scrollBehaviorLarge = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val hazeState = remember { HazeState() }
@@ -66,33 +73,18 @@ fun LoansScreen(
                 },
                 hazeState = hazeState
             )
+        },
+        floatingActionButton = {
+            if (tab == LoansTab.BANK) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddBankLoan,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text(stringResource(R.string.bank_loans_add)) }
+                )
+            }
         }
     ) { paddingValues ->
         val lazyListState = rememberLazyListState()
-
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-            return@Scaffold
-        }
-
-        if (uiState.activeLoans.isEmpty() && uiState.settledLoans.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(paddingValues),
-                contentAlignment = Alignment.Center
-            ) {
-                FinTrackEmptyState(
-                    icon = Icons.Default.SwapHoriz,
-                    headline = stringResource(R.string.loans_empty_title),
-                    description = stringResource(R.string.loans_empty_description)
-                )
-            }
-            return@Scaffold
-        }
 
         var expandedPeople by remember { mutableStateOf(setOf<String>()) }
         fun toggle(name: String) {
@@ -127,11 +119,43 @@ fun LoansScreen(
                 start = Dimensions.Padding.content,
                 end = Dimensions.Padding.content,
                 top = Dimensions.Padding.content + paddingValues.calculateTopPadding(),
-                bottom = paddingValues.calculateBottomPadding() + Spacing.md
+                bottom = paddingValues.calculateBottomPadding() + Spacing.md +
+                    if (tab == LoansTab.BANK) Dimensions.Component.fabScrollClearance else 0.dp
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
             flingBehavior = rememberOverscrollFlingBehavior { lazyListState }
         ) {
+            item(key = "loans-tabs") {
+                LoansTabSelector(selected = tab, onSelect = { tab = it })
+            }
+
+            if (tab == LoansTab.BANK) {
+                bankLoanItems(bankState, onLoanClick = onNavigateToBankLoanDetail)
+                return@LazyColumn
+            }
+
+            if (uiState.isLoading) {
+                item(key = "lending-loading") {
+                    Box(modifier = Modifier.fillMaxWidth().padding(top = Spacing.xl), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+                return@LazyColumn
+            }
+
+            if (uiState.activeLoans.isEmpty() && uiState.settledLoans.isEmpty()) {
+                item(key = "lending-empty") {
+                    Box(modifier = Modifier.fillMaxWidth().padding(top = Spacing.xl), contentAlignment = Alignment.Center) {
+                        FinTrackEmptyState(
+                            icon = Icons.Default.SwapHoriz,
+                            headline = stringResource(R.string.loans_empty_title),
+                            description = stringResource(R.string.loans_empty_description)
+                        )
+                    }
+                }
+                return@LazyColumn
+            }
+
             // Summary card
             item {
                 LoanSummaryCard(
@@ -421,6 +445,28 @@ fun LoanListItem(
                         trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
                 }
+            }
+        }
+    }
+}
+
+private enum class LoansTab { BANK, LENDING }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LoansTabSelector(selected: LoansTab, onSelect: (LoansTab) -> Unit) {
+    val tabs = listOf(
+        LoansTab.BANK to R.string.loans_tab_bank,
+        LoansTab.LENDING to R.string.loans_tab_lending
+    )
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.xs)) {
+        tabs.forEachIndexed { index, (tab, label) ->
+            SegmentedButton(
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = tabs.size)
+            ) {
+                Text(stringResource(label))
             }
         }
     }

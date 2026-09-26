@@ -21,6 +21,7 @@ import com.nrknithin.fintrack.data.database.dao.CategoryDao
 import com.nrknithin.fintrack.data.database.dao.ChatDao
 import com.nrknithin.fintrack.data.database.dao.ExchangeRateDao
 import com.nrknithin.fintrack.data.database.dao.LoanDao
+import com.nrknithin.fintrack.data.database.dao.BankLoanDao
 import com.nrknithin.fintrack.data.database.dao.MerchantMappingDao
 import com.nrknithin.fintrack.data.database.dao.MerchantAliasDao
 import com.nrknithin.fintrack.data.database.dao.BudgetSnapshotDao
@@ -46,6 +47,7 @@ import com.nrknithin.fintrack.data.database.entity.CategoryEntity
 import com.nrknithin.fintrack.data.database.entity.ChatMessage
 import com.nrknithin.fintrack.data.database.entity.ExchangeRateEntity
 import com.nrknithin.fintrack.data.database.entity.LoanEntity
+import com.nrknithin.fintrack.data.database.entity.BankLoanEntity
 import com.nrknithin.fintrack.data.database.entity.MerchantMappingEntity
 import com.nrknithin.fintrack.data.database.entity.MerchantAliasEntity
 import com.nrknithin.fintrack.data.database.entity.TransactionGroupEntity
@@ -64,7 +66,7 @@ import com.nrknithin.fintrack.data.database.entity.UnrecognizedSmsEntity
  * that needs to record the version it was exported against. Bump this in lock-
  * step with any schema change.
  */
-const val SCHEMA_VERSION = 62
+const val SCHEMA_VERSION = 63
 
 /**
  * The FinTrack Room database.
@@ -77,7 +79,7 @@ const val SCHEMA_VERSION = 62
  * @property autoMigrations List of automatic migrations between versions.
  */
 @Database(
-    entities = [TransactionEntity::class, SubscriptionEntity::class, ChatMessage::class, MerchantMappingEntity::class, MerchantAliasEntity::class, CategoryEntity::class, AccountBalanceEntity::class, UnrecognizedSmsEntity::class, CardEntity::class, RuleEntity::class, RuleApplicationEntity::class, ExchangeRateEntity::class, BudgetEntity::class, BudgetCategoryEntity::class, BudgetMonthSnapshotEntity::class, BudgetCategoryMonthSnapshotEntity::class, TransactionSplitEntity::class, BankNotificationEntity::class, LoanEntity::class, TransactionGroupEntity::class, ProfileEntity::class, TagEntity::class, TransactionTagCrossRef::class, RecurringTransactionEntity::class],
+    entities = [TransactionEntity::class, SubscriptionEntity::class, ChatMessage::class, MerchantMappingEntity::class, MerchantAliasEntity::class, CategoryEntity::class, AccountBalanceEntity::class, UnrecognizedSmsEntity::class, CardEntity::class, RuleEntity::class, RuleApplicationEntity::class, ExchangeRateEntity::class, BudgetEntity::class, BudgetCategoryEntity::class, BudgetMonthSnapshotEntity::class, BudgetCategoryMonthSnapshotEntity::class, TransactionSplitEntity::class, BankNotificationEntity::class, LoanEntity::class, TransactionGroupEntity::class, ProfileEntity::class, TagEntity::class, TransactionTagCrossRef::class, RecurringTransactionEntity::class, BankLoanEntity::class],
     version = SCHEMA_VERSION,
     exportSchema = true,
     autoMigrations = [
@@ -129,7 +131,10 @@ const val SCHEMA_VERSION = 62
         AutoMigration(from = 55, to = 56),
         // 56→57 adds a nullable account_last4 column to subscriptions — a pure
         // additive change, so Room generates the ALTER TABLE automatically (#570).
-        AutoMigration(from = 56, to = 57)
+        AutoMigration(from = 56, to = 57),
+        // 62→63 adds the bank_loans table (EMI loans from banks) — a pure additive
+        // change, so Room generates the CREATE TABLE automatically.
+        AutoMigration(from = 62, to = 63)
     ]
 )
 @TypeConverters(Converters::class)
@@ -155,6 +160,7 @@ abstract class FinTrackDatabase : RoomDatabase() {
     abstract fun profileDao(): ProfileDao
     abstract fun tagDao(): TagDao
     abstract fun recurringTransactionDao(): RecurringTransactionDao
+    abstract fun bankLoanDao(): BankLoanDao
 
     companion object {
         const val DATABASE_NAME = "pennywise_database"

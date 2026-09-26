@@ -86,6 +86,7 @@ class BackupExporter @Inject constructor(
         val tags = database.tagDao().getAllTagsSync()
         val transactionTagCrossRefs = database.tagDao().getAllCrossRefs()
         val recurringTransactions = database.recurringTransactionDao().getAll().first()
+        val bankLoans = database.bankLoanDao().getAll()
         
         // Get preferences from repository
         val prefs = userPreferencesRepository.userPreferences.first()
@@ -158,6 +159,8 @@ class BackupExporter @Inject constructor(
         // Recurring templates carry raw merchant names + notes, so they're kept
         // on FULL only — same treatment as loans / other relational tables.
         val exportedRecurringTransactions = if (privacy == ExportPrivacy.FULL) recurringTransactions else emptyList()
+        // Bank loans name the lender and paying account: FULL only, like person loans.
+        val exportedBankLoans = if (privacy == ExportPrivacy.FULL) bankLoans else emptyList()
 
         return FinTrackBackup(
             metadata = BackupMetadata(
@@ -185,6 +188,7 @@ class BackupExporter @Inject constructor(
                     totalBudgetCategoryMonthSnapshots = exportedBudgetCategoryMonthSnapshots.size,
                     totalMerchantAliases = merchantAliases.size,
                     totalRecurringTransactions = exportedRecurringTransactions.size,
+                    totalBankLoans = exportedBankLoans.size,
                     dateRange = dateRange
                 )
             ),
@@ -212,7 +216,8 @@ class BackupExporter @Inject constructor(
                 budgetCategoryMonthSnapshots = exportedBudgetCategoryMonthSnapshots,
                 tags = exportedTags,
                 transactionTagCrossRefs = exportedTransactionTagCrossRefs,
-                recurringTransactions = exportedRecurringTransactions
+                recurringTransactions = exportedRecurringTransactions,
+                bankLoans = exportedBankLoans
             ),
             preferences = PreferencesSnapshot(
                 theme = ThemePreferences(

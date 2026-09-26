@@ -260,6 +260,12 @@ object DatabaseModule {
 
     @Provides
     @Singleton
+    fun provideBankLoanDao(database: FinTrackDatabase): com.nrknithin.fintrack.data.database.dao.BankLoanDao {
+        return database.bankLoanDao()
+    }
+
+    @Provides
+    @Singleton
     fun provideTransactionGroupDao(database: FinTrackDatabase): TransactionGroupDao {
         return database.transactionGroupDao()
     }

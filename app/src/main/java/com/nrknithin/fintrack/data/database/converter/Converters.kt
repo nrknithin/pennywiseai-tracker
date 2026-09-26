@@ -1,6 +1,8 @@
 package com.nrknithin.fintrack.data.database.converter
 
 import androidx.room.TypeConverter
+import com.nrknithin.fintrack.data.database.entity.BankLoanStatus
+import com.nrknithin.fintrack.data.database.entity.BankLoanType
 import com.nrknithin.fintrack.data.database.entity.BudgetGroupType
 import com.nrknithin.fintrack.data.database.entity.BudgetImpactType
 import com.nrknithin.fintrack.data.database.entity.BudgetPeriodType
@@ -148,4 +150,16 @@ class Converters {
     fun toLoanStatus(value: String): LoanStatus {
         return LoanStatus.valueOf(value)
     }
+
+    @TypeConverter
+    fun fromBankLoanType(value: BankLoanType): String = value.name
+
+    @TypeConverter
+    fun toBankLoanType(value: String): BankLoanType = BankLoanType.valueOf(value)
+
+    @TypeConverter
+    fun fromBankLoanStatus(value: BankLoanStatus): String = value.name
+
+    @TypeConverter
+    fun toBankLoanStatus(value: String): BankLoanStatus = BankLoanStatus.valueOf(value)
 }

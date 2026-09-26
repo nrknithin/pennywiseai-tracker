@@ -44,6 +44,9 @@ class FinTrackApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var paydayHolidaysStore: com.nrknithin.fintrack.data.preferences.PaydayHolidaysStore
 
+    @Inject
+    lateinit var bankLoanRepository: com.nrknithin.fintrack.data.repository.BankLoanRepository
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activityReferences = 0
     private var isInForeground = false
@@ -83,6 +86,16 @@ class FinTrackApplication : Application(), Configuration.Provider {
         applicationScope.launch {
             if (userPreferencesRepository.isScheduledFolderBackupEnabled()) {
                 scheduledFolderBackupScheduler.schedule()
+            }
+        }
+
+        // Bank loans: roll each EMI reminder to its next instalment and close loans
+        // whose last EMI is past.
+        applicationScope.launch {
+            try {
+                bankLoanRepository.syncAllReminders()
+            } catch (e: Exception) {
+                android.util.Log.w("FinTrackApp", "Bank loan reminder sync failed: ${e.message}", e)
             }
         }
 

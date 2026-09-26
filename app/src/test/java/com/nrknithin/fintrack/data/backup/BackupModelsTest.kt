@@ -876,4 +876,74 @@ class BackupModelsTest {
         assertFalse(sms.smsScanUseCustomDate)
         assertNull(sms.smsScanCustomDate)
     }
+
+    @Test
+    fun backupWithoutBankLoans_restoresWithNone() {
+        val json = """
+        {
+          "_format": "PennyWise Backup v1.2",
+          "metadata": { "export_id": "pre-bank-loans", "app_version": "2.20.0" },
+          "database": { "transactions": [] }
+        }
+        """.trimIndent()
+
+        val backup = backupJson.decodeFromString<FinTrackBackup>(json)
+
+        assertTrue(backup.database.bankLoans.isEmpty())
+        assertEquals(0, backup.metadata.statistics.totalBankLoans)
+    }
+
+    @Test
+    fun bankLoanMissingMostKeys_fallsBackToDefaults() {
+        val json = """
+        {
+          "_format": "PennyWise Backup v1.2",
+          "metadata": { "export_id": "sparse", "app_version": "2.20.0" },
+          "database": {
+            "bank_loans": [
+              { "id": 3, "name": "Car loan", "emiAmount": "12000.00", "firstEmiDate": "2026-11-05" }
+            ]
+          }
+        }
+        """.trimIndent()
+
+        val loan = backupJson.decodeFromString<FinTrackBackup>(json).database.bankLoans.single()
+
+        assertEquals("Car loan", loan.name)
+        assertEquals(BigDecimal("12000.00"), loan.emiAmount)
+        assertEquals(LocalDate.of(2026, 11, 5), loan.firstEmiDate)
+        assertEquals(BankLoanType.PERSONAL, loan.loanType)
+        assertEquals(BankLoanStatus.ACTIVE, loan.status)
+        assertEquals(BigDecimal.ZERO, loan.gstOnInterestPct)
+        assertNull(loan.principal)
+        assertNull(loan.subscriptionId)
+        assertTrue(loan.uid.isNotEmpty())
+    }
+
+    @Test
+    fun bankLoan_roundTrips() {
+        val loan = BankLoanEntity(
+            id = 7,
+            uid = "fixed-uid",
+            name = "Card EMIs",
+            lender = "Some Bank",
+            loanType = BankLoanType.CARD_EMI,
+            principal = BigDecimal("60000.00"),
+            annualRatePct = BigDecimal("18"),
+            tenureMonths = 12,
+            emiAmount = BigDecimal("5500.80"),
+            firstEmiDate = LocalDate.of(2026, 6, 17),
+            gstOnInterestPct = BigDecimal("18"),
+            accountBankName = "Some Bank",
+            accountLast4 = "0000",
+            statementOutstanding = BigDecimal("20000.00"),
+            statementDate = LocalDate.of(2026, 9, 20),
+            subscriptionId = 11
+        )
+        val json = backupJson.encodeToString(FinTrackBackup(database = DatabaseSnapshot(bankLoans = listOf(loan))))
+
+        val restored = backupJson.decodeFromString<FinTrackBackup>(json).database.bankLoans.single()
+
+        assertEquals(loan, restored)
+    }
 }

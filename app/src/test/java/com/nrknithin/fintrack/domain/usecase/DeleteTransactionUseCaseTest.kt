@@ -66,6 +66,7 @@ class DeleteTransactionUseCaseTest {
         override fun profileDao(): ProfileDao = error("unused")
         override fun tagDao(): TagDao = error("unused")
         override fun recurringTransactionDao(): RecurringTransactionDao = error("unused")
+        override fun bankLoanDao(): com.nrknithin.fintrack.data.database.dao.BankLoanDao = error("unused")
         override fun createOpenHelper(config: DatabaseConfiguration): SupportSQLiteOpenHelper = error("unused")
         override fun createInvalidationTracker(): InvalidationTracker = error("unused")
         override fun clearAllTables() {}
