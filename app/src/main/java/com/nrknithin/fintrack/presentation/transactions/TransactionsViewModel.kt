@@ -69,7 +69,8 @@ class TransactionsViewModel @Inject constructor(
     private val deleteTransactionUseCase: DeleteTransactionUseCase,
     private val restoreTransactionUseCase: RestoreTransactionUseCase,
     private val savedStateHandle: androidx.lifecycle.SavedStateHandle,
-    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val currentDate: com.nrknithin.fintrack.utils.CurrentDate
 ) : ViewModel() {
 
     // Keep home-screen widgets in sync with edits made here (delete/undo,
@@ -771,6 +772,7 @@ class TransactionsViewModel @Inject constructor(
         merge(
             selectedPeriod.map { "period" },
             budgetCycleStartDay.map { "cycle" },
+            currentDate.today.map { "today" },
             categoriesFilter.map { "categories" },
             customDateRange.map { "customDate" }
         )
@@ -821,6 +823,7 @@ class TransactionsViewModel @Inject constructor(
             searchQuery.debounce(300).map { "search" },
             selectedPeriod.map { "period" },
             budgetCycleStartDay.map { "cycle" },
+            currentDate.today.map { "today" },
             categoryFilter.map { "category" },
             categoriesFilter.map { "categories" },
             transactionTypeFilter.map { "typeFilter" },

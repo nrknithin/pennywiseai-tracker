@@ -171,6 +171,12 @@
     <string name="balance_card_total">Total</string>
     <string name="balance_card_approximate_note">* Some balances could not be converted and are shown in original currency (total sum is approximate).</string>
     <string name="balance_card_spent_this_month">Spent this month</string>
+    <!-- Pay-cycle versions (the period runs payday to payday, not the calendar month) -->
+    <string name="balance_card_spent_this_cycle">Spent this cycle</string>
+    <string name="balance_card_this_cycle">This cycle</string>
+    <string name="balance_card_last_cycle">Last cycle</string>
+    <!-- %1$s = last cycle's spend -->
+    <string name="balance_card_last_cycle_amount">Last cycle: %1$s</string>
     <string name="balance_card_change_currency">Change currency</string>
 
     <!-- Budget card -->

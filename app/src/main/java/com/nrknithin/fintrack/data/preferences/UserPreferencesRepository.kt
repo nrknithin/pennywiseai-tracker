@@ -778,14 +778,19 @@ open class UserPreferencesRepository @Inject constructor(
     }
 
     /**
-     * Day of the month the user's budget cycle starts on. 1 = first of the month
-     * (the calendar-month default); up to 31, or [BudgetCycle.LAST_WORKING_DAY] (-1) for
-     * a payday on the last working day. Out-of-range values from older builds or
-     * migrations are clamped at read time.
+     * Day of the month the user's budget cycle starts on: 1..31, or
+     * [BudgetCycle.LAST_WORKING_DAY] (-1) for a payday on the last working day.
+     * Out-of-range values from older builds or migrations are clamped at read time.
+     *
+     * Unset defaults to the salary cycle (last working day), not the calendar month:
+     * this build is for someone paid on the last working day, and Home, filters and
+     * widgets should all run payday to payday unless they pick a date.
      */
     val budgetCycleStartDay: Flow<Int> = context.dataStore.data
         .map { preferences ->
-            BudgetCycle.clampStartDay(preferences[PreferencesKeys.BUDGET_CYCLE_START_DAY] ?: 1)
+            BudgetCycle.clampStartDay(
+                preferences[PreferencesKeys.BUDGET_CYCLE_START_DAY] ?: DEFAULT_BUDGET_CYCLE_START_DAY
+            )
         }
 
     suspend fun getBudgetCycleStartDay(): Int = budgetCycleStartDay.first()
@@ -1022,8 +1027,8 @@ data class UserPreferences(
     val hasCompletedOnboarding: Boolean = false,
     val mainAccountKey: String? = null,
     val selectedProfileId: Long? = null,
-    /** Day of the month (1..31) the budget cycle starts on. 1 = calendar month. */
-    val budgetCycleStartDay: Int = 1
+    /** Budget cycle start: 1..31, or [BudgetCycle.LAST_WORKING_DAY] (the default). */
+    val budgetCycleStartDay: Int = DEFAULT_BUDGET_CYCLE_START_DAY
 )
 
 /** A website-sold Pro license as persisted in DataStore. */
@@ -1033,3 +1038,6 @@ data class StoredLicense(
     val validatedAt: Long,
     val productName: String?,
 )
+
+/** Budget cycle when the user hasn't chosen one: payday on the last working day. */
+const val DEFAULT_BUDGET_CYCLE_START_DAY = BudgetCycle.LAST_WORKING_DAY

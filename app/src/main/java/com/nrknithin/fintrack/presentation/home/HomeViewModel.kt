@@ -89,6 +89,7 @@ class HomeViewModel @Inject constructor(
     private val restoreTransactionUseCase: RestoreTransactionUseCase,
     @ApplicationContext private val context: Context,
     entitlementGate: com.nrknithin.fintrack.billing.EntitlementGate,
+    private val currentDate: com.nrknithin.fintrack.utils.CurrentDate,
 ) : ViewModel() {
 
     /**
@@ -215,14 +216,15 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Recompute the current cycle window whenever the user's start day changes
-     * (or once on first emission). Cheap: just two `LocalDate` reads + arithmetic.
+     * Recompute the current cycle window whenever the user's start day changes or the
+     * date does — so on payday "spent this cycle" starts again even if Home stayed in
+     * memory overnight. Cheap: just two `LocalDate` reads + arithmetic.
      */
     private fun observeBudgetCycle() {
-        userPreferencesRepository.budgetCycleStartDay
-            .onEach { startDay ->
-                _currentCycleWindow.value = BudgetCycle.currentCycle(LocalDate.now(), startDay)
-            }
+        combine(userPreferencesRepository.budgetCycleStartDay, currentDate.today) { startDay, today ->
+            BudgetCycle.currentCycle(today, startDay)
+        }
+            .onEach { _currentCycleWindow.value = it }
             .launchIn(viewModelScope)
     }
 

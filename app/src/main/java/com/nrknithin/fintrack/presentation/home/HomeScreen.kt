@@ -494,6 +494,8 @@ fun HomeScreen(
                             accountBalances = uiState.accountBalances,
                             creditCards = uiState.creditCards,
                             totalAvailableCredit = uiState.totalAvailableCredit,
+                            isPayCycle = currentCycleWindow.first.dayOfMonth != 1 ||
+                                currentCycleWindow.second != currentCycleWindow.first.withDayOfMonth(currentCycleWindow.first.lengthOfMonth()),
                             onAccountClick = { bankName, accountLast4 ->
                                 navController.navigate(
                                     com.nrknithin.fintrack.navigation.AccountDetail(

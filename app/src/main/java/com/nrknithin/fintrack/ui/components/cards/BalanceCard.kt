@@ -99,6 +99,8 @@ fun BalanceCard(
     modifier: Modifier = Modifier,
     blurEffects: Boolean = false,
     hazeState: HazeState = remember { HazeState() },
+    // The period is a pay cycle rather than the calendar month: say "cycle", not "month".
+    isPayCycle: Boolean = false,
 ) {
     var isExpanded by rememberSaveable { mutableStateOf(false) }
     val view = LocalView.current
@@ -167,6 +169,7 @@ fun BalanceCard(
                             .padding(bottom = Spacing.xs)
                     ) {
                         SpendingAmountHeader(
+                            isPayCycle = isPayCycle,
                             amountText = if (isBalanceHidden) "••••••" else CurrencyFormatter.formatCurrency(currentMonthExpenses, currency),
                             amountStyle = FinTrackText.amountLarge,
                             isBalanceHidden = isBalanceHidden,
@@ -215,6 +218,7 @@ fun BalanceCard(
                     // ── Expanded View ──
                     Column(modifier = Modifier.fillMaxWidth()) {
                         SpendingAmountHeader(
+                            isPayCycle = isPayCycle,
                             amountText = if (isBalanceHidden) "••••••" else CurrencyFormatter.formatCurrency(currentMonthExpenses, currency),
                             amountStyle = FinTrackText.heroAmount,
                             isBalanceHidden = isBalanceHidden,
@@ -222,7 +226,7 @@ fun BalanceCard(
                                 view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                 onToggleBalanceVisibility()
                             },
-                            supportingText = stringResource(R.string.balance_card_last_month_amount, if (isBalanceHidden) "••••" else CurrencyFormatter.formatCurrency(lastMonthSpending, currency))
+                            supportingText = stringResource(if (isPayCycle) R.string.balance_card_last_cycle_amount else R.string.balance_card_last_month_amount, if (isBalanceHidden) "••••" else CurrencyFormatter.formatCurrency(lastMonthSpending, currency))
                         )
 
                         Spacer(modifier = Modifier.height(Spacing.sm))
@@ -264,7 +268,7 @@ fun BalanceCard(
                                     )
                                     Spacer(modifier = Modifier.width(Spacing.xs))
                                     Text(
-                                        text = stringResource(R.string.balance_card_this_month),
+                                        text = stringResource(if (isPayCycle) R.string.balance_card_this_cycle else R.string.balance_card_this_month),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                     )
@@ -280,7 +284,7 @@ fun BalanceCard(
                                     )
                                     Spacer(modifier = Modifier.width(Spacing.xs))
                                     Text(
-                                        text = stringResource(R.string.balance_card_last_month),
+                                        text = stringResource(if (isPayCycle) R.string.balance_card_last_cycle else R.string.balance_card_last_month),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                                     )
@@ -296,7 +300,7 @@ fun BalanceCard(
 
                         // "This month" section label
                         Text(
-                            text = stringResource(R.string.balance_card_this_month),
+                            text = stringResource(if (isPayCycle) R.string.balance_card_this_cycle else R.string.balance_card_this_month),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Medium
@@ -492,6 +496,7 @@ fun BalanceCard(
 
 @Composable
 private fun SpendingAmountHeader(
+    isPayCycle: Boolean,
     amountText: String,
     amountStyle: TextStyle,
     isBalanceHidden: Boolean,
@@ -499,7 +504,7 @@ private fun SpendingAmountHeader(
     supportingText: String? = null
 ) {
     Text(
-        text = stringResource(R.string.balance_card_spent_this_month),
+        text = stringResource(if (isPayCycle) R.string.balance_card_spent_this_cycle else R.string.balance_card_spent_this_month),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
         fontWeight = FontWeight.Medium

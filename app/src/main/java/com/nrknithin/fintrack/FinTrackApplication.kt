@@ -47,6 +47,9 @@ class FinTrackApplication : Application(), Configuration.Provider {
     @Inject
     lateinit var bankLoanRepository: com.nrknithin.fintrack.data.repository.BankLoanRepository
 
+    @Inject
+    lateinit var currentDate: com.nrknithin.fintrack.utils.CurrentDate
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var activityReferences = 0
     private var isInForeground = false
@@ -86,6 +89,18 @@ class FinTrackApplication : Application(), Configuration.Provider {
         applicationScope.launch {
             if (userPreferencesRepository.isScheduledFolderBackupEnabled()) {
                 scheduledFolderBackupScheduler.schedule()
+            }
+        }
+
+        // Roll "today" over at each midnight while the app stays open, so cycle-based
+        // figures (Home's spend this cycle) switch on payday without a restart. The
+        // foreground hook below covers the device having slept through midnight.
+        applicationScope.launch {
+            while (true) {
+                val now = java.time.LocalDateTime.now()
+                val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay()
+                kotlinx.coroutines.delay(java.time.Duration.between(now, nextMidnight).toMillis() + 1_000)
+                currentDate.refresh()
             }
         }
 
@@ -152,6 +167,8 @@ class FinTrackApplication : Application(), Configuration.Provider {
                 // App came to foreground
                 isInForeground = true
                 isAppInForeground = true
+                // The date may have moved on while the app was in the background.
+                currentDate.refresh()
                 // Check if app should be locked when returning from background
                 checkAndLockApp()
             }

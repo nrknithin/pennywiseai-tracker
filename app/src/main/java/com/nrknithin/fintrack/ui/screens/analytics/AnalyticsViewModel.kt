@@ -49,7 +49,8 @@ class AnalyticsViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val tagRepository: TagRepository,
     entitlementGate: com.nrknithin.fintrack.billing.EntitlementGate,
-    private val savedStateHandle: androidx.lifecycle.SavedStateHandle
+    private val savedStateHandle: androidx.lifecycle.SavedStateHandle,
+    private val currentDate: com.nrknithin.fintrack.utils.CurrentDate
 ) : ViewModel() {
 
     // Top Tags analytics breakdown is a Pro feature — basic tagging (create /
@@ -169,8 +170,9 @@ class AnalyticsViewModel @Inject constructor(
     // Uses flatMapLatest to cancel previous data loads when filters change (prevents race conditions)
     val uiState: StateFlow<AnalyticsUiState> = combine(
         // Re-emit the period when the cycle start day changes so the data
-        // reloads along with the chip label (#686).
-        combine(_selectedPeriod, budgetCycleStartDay) { period, _ -> period },
+        // reloads along with the chip label (#686) — and when the date moves on,
+        // so "This month" rolls to the new pay cycle on payday.
+        combine(_selectedPeriod, budgetCycleStartDay, currentDate.today) { period, _, _ -> period },
         customDateRange,
         _transactionTypeFilter,
         _selectedCurrency,
