@@ -10,6 +10,13 @@ class AxisBankParser : BaseIndianBankParser() {
 
     override fun getBankName() = "Axis Bank"
 
+    /** Reply to a missed-call / SMS balance enquiry — balance only, no transaction. */
+    override fun isBalanceUpdateNotification(message: String): Boolean =
+        parseBalanceEnquiryReply(message) != null
+
+    override fun parseBalanceUpdate(message: String): BaseBalanceUpdateInfo? =
+        parseBalanceEnquiryReply(message)
+
     override fun canHandle(sender: String): Boolean {
         val normalizedSender = sender.uppercase()
         return normalizedSender.contains("AXIS BANK") ||

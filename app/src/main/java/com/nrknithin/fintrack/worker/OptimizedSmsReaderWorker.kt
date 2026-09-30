@@ -572,13 +572,17 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
     ): ParseResult? = when (parser) {
 
         is SBIBankParser -> {
-            if (!parser.isUPIMandateNotification(sms.body) || !isRecent) null
+            val mandate = if (!parser.isUPIMandateNotification(sms.body) || !isRecent) null
             else parser.parseUPIMandateSubscription(sms.body)?.let { info ->
                 ParseResult.SpecialNotification(sms) {
                     subscriptionRepository.createOrUpdateFromSBIMandate(info, parser.getBankName(), sms.body)
                 }
             }
+            mandate ?: balanceOnlyUpdate(parser, sms)
         }
+
+        // Missed-call balance enquiry replies: a balance, never a transaction.
+        is AxisBankParser -> balanceOnlyUpdate(parser, sms)
 
         is PNBBankParser -> {
             if (!parser.isUPIMandateNotification(sms.body) || !isRecent) null
@@ -663,26 +667,28 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
             }
         }
 
-        is IndusIndBankParser -> {
-            if (!parser.isBalanceUpdateNotification(sms.body)) null
-            else parser.parseBalanceUpdate(sms.body)?.takeUnless {
-                // Balance-only messages never reach saveTransaction (#826).
-                ignoredAccountsStore.isIgnored(it.bankName, it.accountLast4)
-            }?.let { info ->
-                ParseResult.SpecialNotification(sms) {
-                    accountBalanceRepository.insertBalanceUpdate(
-                        bankName     = info.bankName,
-                        accountLast4 = info.accountLast4 ?: "XXXX",
-                        balance      = info.balance,
-                        timestamp    = info.asOfDate?.toJavaLocalDateTime() ?: sms.timestamp.toLocalDateTime(),
-                        currency     = parser.getCurrency()
-                    )
-                }
-            }
-        }
+        is IndusIndBankParser -> balanceOnlyUpdate(parser, sms)
 
         else -> null
     }
+
+    /** A balance-only message (e.g. a balance enquiry reply) saved as a balance update. */
+    private fun balanceOnlyUpdate(parser: BaseIndianBankParser, sms: SmsMessage): ParseResult? =
+        if (!parser.isBalanceUpdateNotification(sms.body)) null
+        else parser.parseBalanceUpdate(sms.body)?.takeUnless {
+            // Balance-only messages never reach saveTransaction (#826).
+            ignoredAccountsStore.isIgnored(it.bankName, it.accountLast4)
+        }?.let { info ->
+            ParseResult.SpecialNotification(sms) {
+                accountBalanceRepository.insertBalanceUpdate(
+                    bankName     = info.bankName,
+                    accountLast4 = info.accountLast4 ?: "XXXX",
+                    balance      = info.balance,
+                    timestamp    = info.asOfDate?.toJavaLocalDateTime() ?: sms.timestamp.toLocalDateTime(),
+                    currency     = parser.getCurrency()
+                )
+            }
+        }
 
     // ─── Stage 3b: Regular transactions ──────────────────────────────────────
 

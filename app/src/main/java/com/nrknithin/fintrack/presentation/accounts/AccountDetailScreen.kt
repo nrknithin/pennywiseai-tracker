@@ -109,6 +109,14 @@ fun AccountDetailScreen(
                 )
             }
 
+            // Missed-call balance enquiry (bank accounts of banks that offer it)
+            val enquiryNumber = com.nrknithin.fintrack.domain.model.BalanceEnquiry.missedCallNumber(uiState.bankName)
+            if (enquiryNumber != null && uiState.currentBalance?.isCreditCard != true) {
+                item {
+                    BalanceEnquiryCard(bankName = uiState.bankName, number = enquiryNumber)
+                }
+            }
+
             // Date Range Filter
             item {
                 DateRangeFilter(
@@ -617,3 +625,57 @@ private fun AccountTransactionItem(
     }
 }
 
+/**
+ * Opens the dialer on the bank's missed-call balance number. The call is placed by the
+ * user (choosing the SIM registered with the bank); the reply SMS updates the balance.
+ */
+@Composable
+private fun BalanceEnquiryCard(bankName: String, number: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    FinTrackCardV2(modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.PhoneInTalk,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(Dimensions.Icon.medium)
+                )
+                Spacer(modifier = Modifier.width(Spacing.sm))
+                Text(
+                    stringResource(R.string.account_balance_enquiry_title),
+                    style = MaterialTheme.typography.titleSmall
+                )
+            }
+            Text(
+                stringResource(R.string.account_balance_enquiry_body, bankName),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (bankName == "State Bank of India") {
+                Text(
+                    stringResource(
+                        R.string.account_balance_enquiry_sbi_note,
+                        com.nrknithin.fintrack.domain.model.BalanceEnquiry.SBI_QUICK_REGISTRATION_NUMBER
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FilledTonalButton(
+                onClick = {
+                    val intent = android.content.Intent(
+                        android.content.Intent.ACTION_DIAL,
+                        android.net.Uri.parse("tel:$number")
+                    )
+                    runCatching { context.startActivity(intent) }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(Dimensions.Icon.small))
+                Spacer(modifier = Modifier.width(Spacing.xs))
+                Text(stringResource(R.string.account_balance_enquiry_call, number))
+            }
+        }
+    }
+}

@@ -6,6 +6,21 @@ import com.nrknithin.fintrack.parser.core.TransactionType
 import kotlinx.datetime.LocalDateTime
 import java.math.BigDecimal
 
+/** The first amount within a short reach after "Bal" / "Balance" / "Avl. Bal". */
+private val BALANCE_ENQUIRY_AMOUNT = Regex(
+    """\bbal(?:ance)?\b.{0,60}?(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?)""",
+    setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+)
+
+/**
+ * Words a balance-enquiry reply never carries but transaction, card-decline, dues and
+ * wallet alerts do ("declined due to insufficient balance … Avl Limit INR …").
+ */
+private val NOT_A_BALANCE_ENQUIRY_REPLY = Regex(
+    """\b(?:debit(?:ed)?|credit(?:ed)?|withdrawn|deposited|spent|transferr?ed|payment|paid|refund(?:ed)?|declined|insufficient|limit|due|emi|mandate|maintain|ensure|sent|received|deducted|toll|wallet|reversal)\b""",
+    RegexOption.IGNORE_CASE
+)
+
 /**
  * Base abstract class for Indian bank parsers.
  * Handles common patterns across Indian banks (INR currency, UPI, etc.).
@@ -176,6 +191,26 @@ abstract class BaseIndianBankParser : BankParser() {
         // Patterns: "is Rs. 12,345", "Avl Bal Rs 12345"
         val balance = extractBalance(message) ?: return null
 
+        return BaseBalanceUpdateInfo(
+            bankName = getBankName(),
+            accountLast4 = accountLast4,
+            balance = balance
+        )
+    }
+
+    /**
+     * A reply to a balance enquiry — a missed call or an SMS "BAL" to the bank: an
+     * account, the word balance and an amount, and none of the words a transaction,
+     * card or dues alert carries. The amount is the first one after "Bal"/"Balance":
+     * "Bal for your Axis Bank A/c no. XX1234 - INR 999.99",
+     * "Avl bal in A/c XX1234 as on 30-SEP-26 is INR 12,345.67",
+     * "Your A/c ending 1234 has balance of Rs. 12,345.67".
+     */
+    protected fun parseBalanceEnquiryReply(message: String): BaseBalanceUpdateInfo? {
+        if (NOT_A_BALANCE_ENQUIRY_REPLY.containsMatchIn(message)) return null
+        val balance = BALANCE_ENQUIRY_AMOUNT.find(message)?.groupValues?.get(1)
+            ?.replace(",", "")?.toBigDecimalOrNull() ?: return null
+        val accountLast4 = extractAccountLast4(message) ?: return null
         return BaseBalanceUpdateInfo(
             bankName = getBankName(),
             accountLast4 = accountLast4,

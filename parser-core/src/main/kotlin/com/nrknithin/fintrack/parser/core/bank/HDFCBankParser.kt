@@ -18,6 +18,16 @@ class HDFCBankParser : BaseIndianBankParser() {
 
     override fun getBankName() = "HDFC Bank"
 
+    /**
+     * HDFC's own balance notifications first; a missed-call balance enquiry reply that
+     * the generic check doesn't recognise falls back to [parseBalanceEnquiryReply].
+     */
+    override fun isBalanceUpdateNotification(message: String): Boolean =
+        super.isBalanceUpdateNotification(message) || parseBalanceEnquiryReply(message) != null
+
+    override fun parseBalanceUpdate(message: String): BaseBalanceUpdateInfo? =
+        super.parseBalanceUpdate(message) ?: parseBalanceEnquiryReply(message)
+
     override fun canHandle(sender: String): Boolean {
         val upperSender = sender.uppercase()
 

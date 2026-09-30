@@ -226,6 +226,15 @@
     <string name="manage_accounts_read_only">Read-only</string>
     <string name="manage_accounts_account_balance_label">Account Balance</string>
 
+    <!-- ══ Balance enquiry by missed call ══ -->
+    <string name="account_balance_enquiry_title">Check balance by missed call</string>
+    <!-- %1$s = bank name -->
+    <string name="account_balance_enquiry_body">Call from the mobile number registered with %1$s. The bank hangs up and texts your balance, and FinTrack updates this account from that SMS.</string>
+    <!-- %1$s = phone number -->
+    <string name="account_balance_enquiry_call">Call %1$s</string>
+    <!-- %1$s = SBI Quick registration number -->
+    <string name="account_balance_enquiry_sbi_note">First time? Register for SBI Quick by sending REG followed by your account number to %1$s.</string>
+
     <!-- ══ Bank loans (EMI loans from banks, separate from lending) ══ -->
     <string name="loans_tab_bank">Bank loans</string>
     <string name="loans_tab_lending">Lending</string>

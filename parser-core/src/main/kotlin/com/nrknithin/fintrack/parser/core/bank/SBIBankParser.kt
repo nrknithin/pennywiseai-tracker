@@ -13,6 +13,13 @@ class SBIBankParser : BaseIndianBankParser() {
 
     override fun getBankName() = "State Bank of India"
 
+    /** Reply to a missed-call / SMS balance enquiry — balance only, no transaction. */
+    override fun isBalanceUpdateNotification(message: String): Boolean =
+        parseBalanceEnquiryReply(message) != null
+
+    override fun parseBalanceUpdate(message: String): BaseBalanceUpdateInfo? =
+        parseBalanceEnquiryReply(message)
+
     override fun canHandle(sender: String): Boolean {
         val normalizedSender = sender.uppercase()
         return normalizedSender.contains("SBI") ||

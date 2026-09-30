@@ -26,6 +26,7 @@ import com.nrknithin.fintrack.domain.repository.RuleRepository
 import com.nrknithin.fintrack.domain.service.RuleEngine
 import java.math.BigDecimal
 import java.time.Instant
+import kotlinx.datetime.toJavaLocalDateTime
 import java.time.LocalDateTime
 import java.time.ZoneId
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -94,6 +95,9 @@ class SmsTransactionProcessor @Inject constructor(
             // Parse the SMS
             val parsedTransaction = parsers.firstNotNullOfOrNull { it.parse(body, sender, timestamp) }
             if (parsedTransaction == null) {
+                if (saveBalanceOnlyUpdate(parsers, body, timestamp)) {
+                    return ProcessingResult(false, reason = "Balance update")
+                }
                 return ProcessingResult(false, reason = "Could not parse transaction from SMS")
             }
 
@@ -106,6 +110,43 @@ class SmsTransactionProcessor @Inject constructor(
             return ProcessingResult(false, reason = e.message)
         }
     }
+
+    /**
+     * A balance-only message — typically the bank's reply to a missed-call / SMS "BAL"
+     * balance enquiry — updates that account's balance as it arrives, the same way the
+     * SMS scan does. Only for banks whose parsers recognise such replies. Returns true
+     * when a balance was saved.
+     */
+    private suspend fun saveBalanceOnlyUpdate(
+        parsers: List<com.nrknithin.fintrack.parser.core.bank.BankParser>,
+        body: String,
+        timestamp: Long
+    ): Boolean {
+        val (parser, info) = parsers
+            .filterIsInstance<com.nrknithin.fintrack.parser.core.bank.BaseIndianBankParser>()
+            .filter { it.supportsBalanceOnlyMessages() }
+            .firstNotNullOfOrNull { parser -> parser.parseBalanceUpdate(body)?.let { parser to it } }
+            ?: return false
+        // Balance-only messages never reach saveParsedTransaction's ignore gate (#826).
+        if (ignoredAccountsStore.isIgnored(info.bankName, info.accountLast4)) return false
+        val asOf = info.asOfDate?.toJavaLocalDateTime()
+            ?: LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault())
+        accountBalanceRepository.insertBalanceUpdate(
+            bankName = info.bankName,
+            accountLast4 = info.accountLast4 ?: "XXXX",
+            balance = info.balance,
+            timestamp = asOf,
+            currency = parser.getCurrency()
+        )
+        Log.d(TAG, "Balance-only update for ${info.bankName} **${info.accountLast4}")
+        return true
+    }
+
+    private fun com.nrknithin.fintrack.parser.core.bank.BaseIndianBankParser.supportsBalanceOnlyMessages(): Boolean =
+        this is com.nrknithin.fintrack.parser.core.bank.HDFCBankParser ||
+            this is com.nrknithin.fintrack.parser.core.bank.SBIBankParser ||
+            this is com.nrknithin.fintrack.parser.core.bank.AxisBankParser ||
+            this is com.nrknithin.fintrack.parser.core.bank.IndusIndBankParser
 
     /**
      * Saves a parsed transaction to the database with all necessary processing:
