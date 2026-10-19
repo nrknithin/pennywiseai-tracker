@@ -104,6 +104,39 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
         // Matches SBIBankParser.getBankName() and the literal in TransactionDeduplication.
         private const val GPAY_PARTNER_BANK         = "State Bank of India"
 
+        // The last-4 the two balance-notification paths used to invent when the SMS
+        // carried a balance but no account number. Nothing writes it any more (see
+        // [checkSubscriptionOrBalance]); it survives only so [prunePlaceholderAccounts]
+        // can recognise and remove the rows already sitting in the database.
+        private const val PLACEHOLDER_ACCOUNT_LAST4 = "XXXX"
+
+        /**
+         * Whether a `PLACEHOLDER_ACCOUNT_LAST4` account is pure residue of that old
+         * write and nothing else — the qualification behind an irreversible delete, so
+         * it errs towards keeping the account.
+         *
+         * Disqualifying on ANY row: a link to a transaction, or a `source_type` (every
+         * real origin stamps one — TRANSACTION, MANUAL, OPENING, CARD_LINK — while
+         * `insertBalanceUpdate` from a balance SMS leaves it null), or owner-set
+         * account metadata (an alias or a low-balance threshold means they treat this
+         * account as real, whatever its last-4). [transactionCount] counts every
+         * transaction attributed to the account including soft-deleted ones: a
+         * restorable transaction still needs its account.
+         */
+        internal fun qualifiesAsPlaceholderResidue(
+            rows: List<AccountBalanceEntity>,
+            transactionCount: Int
+        ): Boolean =
+            rows.isNotEmpty() &&
+            transactionCount == 0 &&
+            rows.all { row ->
+                row.accountLast4 == PLACEHOLDER_ACCOUNT_LAST4 &&
+                row.transactionId == null &&
+                row.sourceType == null &&
+                row.alias == null &&
+                row.lowBalanceThreshold == null
+            }
+
         private val SMS_PROJECTION = arrayOf(
             Telephony.Sms._ID,
             Telephony.Sms.ADDRESS,
@@ -618,14 +651,24 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
             val actions = mutableListOf<suspend () -> Unit>()
             if (parser.isBalanceUpdateNotification(sms.body)) {
                 parser.parseBalanceUpdate(sms.body)?.let { info ->
-                    actions += {
-                        accountBalanceRepository.insertBalanceUpdate(
-                            bankName     = info.bankName,
-                            accountLast4 = info.accountLast4 ?: "XXXX",
-                            balance      = info.balance,
-                            timestamp    = info.asOfDate?.toJavaLocalDateTime() ?: sms.timestamp.toLocalDateTime(),
-                            currency     = parser.getCurrency()
-                        )
+                    // Drop a balance we cannot attribute to an account. Accounts are
+                    // materialised by GROUP BY bank_name, account_last4, so writing this
+                    // under a placeholder last-4 invents a phantom account in the owner's
+                    // list that can never be shown against a real account, updated by the
+                    // next SMS, or reconciled — exactly the residue
+                    // [prunePlaceholderAccounts] now has to sweep up.
+                    // BaseIndianBankParser.parseBalanceUpdate (which HDFC uses) leaves
+                    // accountLast4 null whenever extraction fails, so this is the live case.
+                    info.accountLast4?.let { accountLast4 ->
+                        actions += {
+                            accountBalanceRepository.insertBalanceUpdate(
+                                bankName     = info.bankName,
+                                accountLast4 = accountLast4,
+                                balance      = info.balance,
+                                timestamp    = info.asOfDate?.toJavaLocalDateTime() ?: sms.timestamp.toLocalDateTime(),
+                                currency     = parser.getCurrency()
+                            )
+                        }
                     }
                 }
                 // If unparseable as balance update, fall through to check eMandate/futureDebit below
@@ -644,7 +687,15 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
                         Log.e(TAG, "HDFC action failed: ${e.message}", e)
                     }
                 }
-            } else null
+            }
+            // Discard, not null, when this was a balance notification we could not
+            // attribute. Returning null falls through to the transaction parsers, and a
+            // balance SMS that happens to satisfy isTransactionMessage + extractAmount +
+            // extractTransactionType would then be stored as a TRANSACTION — trading the
+            // phantom account this change removed for a phantom transaction, which is
+            // worse because it lands in the ledger. We know it is a balance message.
+            else if (parser.isBalanceUpdateNotification(sms.body)) ParseResult.Discard(sms)
+            else null
         }
 
         is IndianBankParser -> {
@@ -658,15 +709,21 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
 
         is IndusIndBankParser -> {
             if (!parser.isBalanceUpdateNotification(sms.body)) null
+            // Same rule as the HDFC path above: no account number, no balance row.
+            // IndusIndBankParser.parseBalanceUpdate already bails out when it cannot
+            // extract the account, so this guard is unreachable today — it keeps the
+            // invariant stated at the write, where a later parser change would meet it.
             else parser.parseBalanceUpdate(sms.body)?.let { info ->
-                ParseResult.SpecialNotification(sms) {
-                    accountBalanceRepository.insertBalanceUpdate(
-                        bankName     = info.bankName,
-                        accountLast4 = info.accountLast4 ?: "XXXX",
-                        balance      = info.balance,
-                        timestamp    = info.asOfDate?.toJavaLocalDateTime() ?: sms.timestamp.toLocalDateTime(),
-                        currency     = parser.getCurrency()
-                    )
+                info.accountLast4?.let { accountLast4 ->
+                    ParseResult.SpecialNotification(sms) {
+                        accountBalanceRepository.insertBalanceUpdate(
+                            bankName     = info.bankName,
+                            accountLast4 = accountLast4,
+                            balance      = info.balance,
+                            timestamp    = info.asOfDate?.toJavaLocalDateTime() ?: sms.timestamp.toLocalDateTime(),
+                            currency     = parser.getCurrency()
+                        )
+                    }
                 }
             }
         }
@@ -941,6 +998,11 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
             if (e is CancellationException) throw e
             Log.e(TAG, "GPay duplicate cleanup error: ${e.message}")
         }
+        try { prunePlaceholderAccounts() }
+        catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e(TAG, "Placeholder account cleanup error: ${e.message}")
+        }
         if (stats.saved.get() > 0) {
             try { llmRepository.updateSystemPrompt() }
             catch (e: Exception) {
@@ -983,6 +1045,47 @@ class OptimizedSmsReaderWorker @AssistedInject constructor(
                 Log.i(TAG, "Removed phantom GPay account ($removed orphaned balance rows)")
             }
         }
+    }
+
+    /**
+     * Remove the phantom accounts the old "invent a `XXXX` last-4" balance writes left
+     * behind. Until this scan, a balance SMS that carried no account number was still
+     * written as a balance row under a literal placeholder last-4; since accounts are
+     * materialised by `GROUP BY bank_name, account_last4`, each one surfaced as an
+     * account the owner never had. The write is gone, but rows already in the database
+     * would linger forever, so sweep them here — a sibling of [prunePhantomGPayAccounts]
+     * rather than part of it: same cleanup pass, different cause, and folding it in
+     * would file its failures under a GPay error.
+     *
+     * Deliberately narrow, because deleting account rows is irreversible: only accounts
+     * whose last-4 is exactly the placeholder, and only when every row under them passes
+     * [qualifiesAsPlaceholderResidue]. A genuine account whose last-4 is unknown for some
+     * other reason is keyed differently — mobile-money wallets use
+     * [AccountBalanceEntity.WALLET_ACCOUNT_MARKER], and a parser-extracted last-4 is
+     * always digits — so it cannot be caught here.
+     *
+     * Unlike the GPay sweep this needs no atomic check-then-delete: it runs after the
+     * pipeline's saver and balance updater have joined, and nothing writes the
+     * placeholder any more, so no insert can land between the qualification and the
+     * delete.
+     */
+    private suspend fun prunePlaceholderAccounts() {
+        accountBalanceRepository.getAllLatestBalancesOnce()
+            .filter { it.accountLast4 == PLACEHOLDER_ACCOUNT_LAST4 }
+            .forEach { account ->
+                val bankName = account.bankName
+                val rows = accountBalanceRepository
+                    .getBalanceHistoryForAccount(bankName, PLACEHOLDER_ACCOUNT_LAST4)
+                val transactionCount = transactionRepository
+                    .countByAccount(bankName, PLACEHOLDER_ACCOUNT_LAST4)
+                if (!qualifiesAsPlaceholderResidue(rows, transactionCount)) return@forEach
+
+                val removed = accountBalanceRepository
+                    .deleteAccount(bankName, PLACEHOLDER_ACCOUNT_LAST4)
+                if (removed > 0) {
+                    Log.i(TAG, "Removed placeholder account ($removed unattributable balance rows)")
+                }
+            }
     }
 
     // ─── Progress ─────────────────────────────────────────────────────────────

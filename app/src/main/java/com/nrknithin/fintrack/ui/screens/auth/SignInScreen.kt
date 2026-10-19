@@ -1,12 +1,16 @@
 package com.nrknithin.fintrack.ui.screens.auth
 
+import com.nrknithin.fintrack.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Image
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,11 +71,18 @@ fun SignInScreen(
                 verticalArrangement = Arrangement.Center,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = Icons.Filled.AccountCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(Dimensions.Icon.extraLarge),
-                    tint = MaterialTheme.colorScheme.primary
+                // The app's own mark, not a generic person glyph. This is the first screen
+                // of the app, so it should say which app — and AccountCircle read as a
+                // placeholder avatar, which is doubly wrong on a screen that has no
+                // account yet. Same treatment as onboarding's WelcomeStep, deliberately:
+                // the two screens are now consecutive.
+                Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                    contentDescription = "FinTrack",
+                    modifier = Modifier
+                        .size(Dimensions.Icon.extraLarge)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.xl))

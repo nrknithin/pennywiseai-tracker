@@ -224,7 +224,7 @@ class SignInViewModelTest {
 
         assertEquals(SignInPhase.Completed, viewModel.uiState.value.phase)
         assertEquals(callsBefore, gateway.signInCalls)
-        coVerify(exactly = 0) { prefs.applyGoogleIdentity(any()) }
+        coVerify(exactly = 0) { prefs.applyGoogleIdentity(any(), any()) }
     }
 
     @Test

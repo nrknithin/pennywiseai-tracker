@@ -45,14 +45,14 @@ class AuthRepositoryTest {
 
     @Test
     fun `a successful sign-in persists the identity before it reports success`() = runTest {
-        gateway.scripted.addLast(AuthResult.Success(GoogleIdentity(DISPLAY_NAME, ID_TOKEN)))
+        gateway.scripted.addLast(AuthResult.Success(GoogleIdentity(DISPLAY_NAME, ID_TOKEN, ACCOUNT_KEY)))
 
         val result = repository.signIn(activity)
 
         // Verified BEFORE the result is asserted, on purpose: this pins persist-then-report.
         // A caller that sees Success must be able to rely on the write having landed, so
         // that a process death mid-flow leaves the gate shut rather than half-open.
-        coVerify(exactly = 1) { prefs.applyGoogleIdentity(DISPLAY_NAME) }
+        coVerify(exactly = 1) { prefs.applyGoogleIdentity(DISPLAY_NAME, ACCOUNT_KEY) }
         assertTrue(result is AuthResult.Success)
     }
 
@@ -61,21 +61,21 @@ class AuthRepositoryTest {
         // The writer is the one that decides not to write the name half — the repository
         // must not start second-guessing it, or the gate never opens for an account whose
         // profile carries no display name.
-        gateway.scripted.addLast(AuthResult.Success(GoogleIdentity(null, ID_TOKEN)))
+        gateway.scripted.addLast(AuthResult.Success(GoogleIdentity(null, ID_TOKEN, ACCOUNT_KEY)))
 
         val result = repository.signIn(activity)
 
-        coVerify(exactly = 1) { prefs.applyGoogleIdentity(null) }
+        coVerify(exactly = 1) { prefs.applyGoogleIdentity(null, ACCOUNT_KEY) }
         assertTrue(result is AuthResult.Success)
     }
 
     @Test
     fun `a success with a blank name still opens the gate`() = runTest {
-        gateway.scripted.addLast(AuthResult.Success(GoogleIdentity(BLANK_NAME, ID_TOKEN)))
+        gateway.scripted.addLast(AuthResult.Success(GoogleIdentity(BLANK_NAME, ID_TOKEN, ACCOUNT_KEY)))
 
         val result = repository.signIn(activity)
 
-        coVerify(exactly = 1) { prefs.applyGoogleIdentity(BLANK_NAME) }
+        coVerify(exactly = 1) { prefs.applyGoogleIdentity(BLANK_NAME, ACCOUNT_KEY) }
         assertTrue(result is AuthResult.Success)
     }
 
@@ -86,7 +86,7 @@ class AuthRepositoryTest {
         val result = repository.signIn(activity)
 
         assertSame(AuthResult.Cancelled, result)
-        coVerify(exactly = 0) { prefs.applyGoogleIdentity(any()) }
+        coVerify(exactly = 0) { prefs.applyGoogleIdentity(any(), any()) }
     }
 
     @Test
@@ -99,7 +99,7 @@ class AuthRepositoryTest {
             assertTrue("$reason should surface as a Failure", result is AuthResult.Failure)
             assertEquals(reason, (result as AuthResult.Failure).reason)
         }
-        coVerify(exactly = 0) { prefs.applyGoogleIdentity(any()) }
+        coVerify(exactly = 0) { prefs.applyGoogleIdentity(any(), any()) }
     }
 
     @Test
@@ -116,5 +116,11 @@ class AuthRepositoryTest {
         const val DISPLAY_NAME = "Sample User"
         const val BLANK_NAME = "   "
         const val ID_TOKEN = "fake-id-token"
+
+        /**
+         * Stands in for the SHA-256 the real gateway computes from the account id. A
+         * literal digest-shaped string, never a real one, and never an address.
+         */
+        const val ACCOUNT_KEY = "0000000000000000000000000000000000000000000000000000000000000000"
     }
 }

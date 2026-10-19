@@ -60,6 +60,97 @@ data class PendingProfileReassign(
     val transactionCount: Int
 )
 
+/**
+ * Whether one account may be merged into another, and if not, why (#368).
+ *
+ * Merging is the most destructive thing this app does: it bulk-retargets every
+ * transaction on the source, re-points transfer legs and cards at the target,
+ * and deletes the source's balance history outright — with no undo. The merge
+ * picker identifies an account by bank name and last-4 alone, so a mis-tap on
+ * an adjacent row is realistic.
+ *
+ * The rules live here, as one pure function, instead of being restated by the
+ * picker in `MergeAccountsSheet` and again by [ManageAccountsViewModel.mergeAccounts].
+ * The picker offers exactly the targets the ViewModel will accept, so a refusal
+ * can never surprise the user at the confirm step, and the whole rule set is
+ * testable without Room or Android (`AccountMergeGuardTest`).
+ */
+object AccountMergeGuard {
+
+    /**
+     * A message explaining why [source] must not be merged into [target], or
+     * `null` when the merge is allowed.
+     */
+    fun refusalReason(source: AccountBalanceEntity, target: AccountBalanceEntity): String? {
+        // The same-account test is deliberately NOT trimmed, and must stay that way.
+        // Rows are keyed by the raw `bank_name` — AccountBalanceDao groups on it and
+        // SQLite `=` is whitespace-sensitive — and `addAccount()` stores whatever the user
+        // typed, `validateForm` only checking isNotBlank(). So "HDFC Bank " and
+        // "HDFC Bank" with one last-4 are two distinct rows that look identical on screen:
+        // the textbook duplicate this feature exists to repair. Trimming here would
+        // declare them "the same account", refuse the merge, and — because
+        // MergeAccountsSheet filters its picker through canMerge — hide the target
+        // entirely, leaving no way to fix them at all.
+        val sameBank = source.bankName.equals(target.bankName, ignoreCase = true)
+        val sameLast4 = source.accountLast4 == target.accountLast4
+
+        if (sameBank && sameLast4) {
+            return "Source and target are the same account"
+        }
+
+        // Relatedness, unlike identity, is about whether these plausibly describe one
+        // real account — so here the forgiving comparison is the right one.
+        val sameBankLoose = source.bankName.trim().equals(target.bankName.trim(), ignoreCase = true)
+
+        // Merge exists to fold a duplicate of one real account back together —
+        // the same account recorded twice under different bank-name spellings
+        // (a manually-added "HDFC" alongside the parser's "HDFC Bank"), or two
+        // numbers at one bank. When the two rows share *neither* the bank nor
+        // the account number there is no reading under which they are the same
+        // account, and this is the mis-tap the picker cannot otherwise catch.
+        //
+        // Deliberately not a plain "must be the same bank": that would block
+        // the spelling-mismatch case, which is the commonest legitimate merge.
+        //
+        // A shared account number is evidence of a shared account only when it
+        // is really a number. Every mobile-money wallet carries the same
+        // [AccountBalanceEntity.WALLET_ACCOUNT_MARKER] sentinel, so an eMola
+        // wallet and an M-Pesa wallet "match" on it while being two entirely
+        // different services. ("CASH", the sentinel manual cash accounts get,
+        // is deliberately *not* excluded: only cash accounts carry it, they are
+        // all hand-made by the user, and folding two of them together is a
+        // reasonable thing to want.)
+        val relatedByNumber = sameLast4 &&
+            source.accountLast4.isNotBlank() &&
+            !source.accountLast4.trim()
+                .equals(AccountBalanceEntity.WALLET_ACCOUNT_MARKER, ignoreCase = true)
+        if (!sameBankLoose && !relatedByNumber) {
+            val from = AccountBalanceEntity.accountLabel(source.bankName, source.accountLast4)
+            val into = AccountBalanceEntity.accountLabel(target.bankName, target.accountLast4)
+            // Names the remedy, because the refusal is otherwise a dead end: if these
+            // really are one account under two bank spellings AND two numbers, renaming
+            // one of them (Manage Accounts -> rename) makes the merge available.
+            return "Can't merge unrelated accounts ($from vs $into) — they share neither " +
+                "bank nor account number. If they are the same account, rename one to " +
+                "match the other first."
+        }
+
+        if (!source.currency.equals(target.currency, ignoreCase = true)) {
+            return "Currencies don't match (${source.currency} vs ${target.currency})"
+        }
+
+        if (source.isCreditCard != target.isCreditCard) {
+            return "Can't merge a credit card with a regular account"
+        }
+
+        return null
+    }
+
+    /** Convenience for the picker: true when [refusalReason] has nothing to say. */
+    fun canMerge(source: AccountBalanceEntity, target: AccountBalanceEntity): Boolean =
+        refusalReason(source, target) == null
+}
+
 @HiltViewModel
 class ManageAccountsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -571,13 +662,23 @@ class ManageAccountsViewModel @Inject constructor(
 
     /**
      * Merge [source] into [target] (#368): re-target every transaction from
-     * source to target, then drop the source's balance rows. Validates first
-     * that the two accounts are compatible (same currency, same `isCreditCard`)
-     * and that they aren't the same account. Caller should pre-call
+     * source to target, then drop the source's balance rows. Refuses first via
+     * [AccountMergeGuard], which is the single source of truth for what may be
+     * merged (and is what the picker filters on). Caller should pre-call
      * [countTransactionsOn] for the confirmation dialog.
      *
      * One-way for v1 — no undo. Run inside a single coroutine so the
      * partial-merge window is short.
+     *
+     * **Known limit — orphan cards are not re-linked.** The re-link step reads
+     * `uiState.linkedCards`, a map `loadCards()` builds *only* from debit cards
+     * that already have a non-null `accountLast4`; orphaned cards (debit cards
+     * with no account) are collected separately into `uiState.orphanedCards`
+     * and are never consulted here. So a card orphaned against the source — the
+     * very situation that tends to produce the duplicate account being merged
+     * away — stays orphaned, and the next matching SMS can recreate a row for
+     * the account this merge just removed. Left as-is deliberately: re-linking
+     * orphans would be a behaviour change beyond the guard this method needed.
      */
     fun mergeAccounts(
         source: AccountBalanceEntity,
@@ -585,22 +686,9 @@ class ManageAccountsViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                val sameAccount = source.bankName.equals(target.bankName, ignoreCase = true) &&
-                    source.accountLast4 == target.accountLast4
-                if (sameAccount) {
-                    _uiState.update { it.copy(errorMessage = "Source and target are the same account") }
-                    return@launch
-                }
-                if (!source.currency.equals(target.currency, ignoreCase = true)) {
-                    _uiState.update {
-                        it.copy(errorMessage = "Currencies don't match (${source.currency} vs ${target.currency})")
-                    }
-                    return@launch
-                }
-                if (source.isCreditCard != target.isCreditCard) {
-                    _uiState.update {
-                        it.copy(errorMessage = "Can't merge a credit card with a regular account")
-                    }
+                val refusal = AccountMergeGuard.refusalReason(source, target)
+                if (refusal != null) {
+                    _uiState.update { it.copy(errorMessage = refusal) }
                     return@launch
                 }
 

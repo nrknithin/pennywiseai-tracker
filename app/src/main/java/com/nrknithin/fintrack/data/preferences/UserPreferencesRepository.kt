@@ -162,6 +162,14 @@ open class UserPreferencesRepository @Inject constructor(
         val AUTH_SIGNED_IN = booleanPreferencesKey("auth_signed_in")
         val AUTH_DISPLAY_NAME = stringPreferencesKey("auth_display_name")
 
+        /**
+         * SHA-256 of the Google account id, never the id itself — that id is the account's
+         * EMAIL ADDRESS (CLAUDE.md #4). Only ever compared against a freshly computed
+         * hash, so the address is never needed back. Exists so a DIFFERENT account signing
+         * in can be recognised as a new person and sent through onboarding.
+         */
+        val AUTH_ACCOUNT_KEY = stringPreferencesKey("auth_account_key")
+
         val MAIN_ACCOUNT_KEY = stringPreferencesKey("main_account_key")
         // True once the user explicitly picks a currency in the Settings selector.
         // While true, the main-account-derived currency must not override their choice.
@@ -906,10 +914,22 @@ open class UserPreferencesRepository @Inject constructor(
      * A blank name writes neither key's name half: `user_name` keeps its value and the
      * onboarding field stays editable, so the step can always be completed.
      */
-    suspend fun applyGoogleIdentity(displayName: String?) {
+    suspend fun applyGoogleIdentity(displayName: String?, accountKey: String? = null) {
         val clean = displayName?.trim()
         context.dataStore.edit { preferences ->
+            val previousKey = preferences[PreferencesKeys.AUTH_ACCOUNT_KEY]
             preferences[PreferencesKeys.AUTH_SIGNED_IN] = true
+            if (!accountKey.isNullOrBlank()) {
+                // A different Google account is a different person: send them through
+                // onboarding rather than dropping them into the previous owner's set-up
+                // with only the name swapped. Only when a PREVIOUS key existed and differs
+                // — a first sign-in on an install that was already set up (the upgrade
+                // path) is left alone.
+                if (previousKey != null && previousKey != accountKey) {
+                    preferences[PreferencesKeys.HAS_COMPLETED_ONBOARDING] = false
+                }
+                preferences[PreferencesKeys.AUTH_ACCOUNT_KEY] = accountKey
+            }
             if (!clean.isNullOrBlank()) {
                 preferences[PreferencesKeys.AUTH_DISPLAY_NAME] = clean
                 preferences[PreferencesKeys.USER_NAME] = clean

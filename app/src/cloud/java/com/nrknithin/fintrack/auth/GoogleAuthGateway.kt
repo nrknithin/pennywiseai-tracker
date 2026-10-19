@@ -16,6 +16,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.nrknithin.fintrack.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -71,7 +72,8 @@ class GoogleAuthGateway @Inject constructor(
                 GoogleIdentity(
                     displayName = token.displayName?.takeIf { it.isNotBlank() }
                         ?: token.givenName?.takeIf { it.isNotBlank() },
-                    idToken = token.idToken
+                    idToken = token.idToken,
+                    accountKey = hashAccountId(token.id)
                 )
             )
         } catch (_: GoogleIdTokenParsingException) {
@@ -107,6 +109,20 @@ class GoogleAuthGateway @Inject constructor(
             e is NoCredentialException -> AuthResult.Failure(AuthFailure.NO_GOOGLE_ACCOUNT)
             else -> AuthResult.Failure(AuthFailure.UNKNOWN, e.type)
         }
+    }
+
+    /**
+     * One-way hash of the account id, which is the account's EMAIL ADDRESS. This is the
+     * only place that value is touched, and nothing but its digest leaves the function —
+     * so no caller, no DataStore entry and no log can carry the address (CLAUDE.md #4).
+     * Not salted on purpose: a per-install salt would change the digest on reinstall and
+     * make a returning account look like a new one, which is exactly what it must detect.
+     */
+    private fun hashAccountId(id: String?): String {
+        if (id.isNullOrBlank()) return ""
+        return MessageDigest.getInstance("SHA-256")
+            .digest(id.trim().lowercase().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
     }
 
     private fun hasNetwork(): Boolean {

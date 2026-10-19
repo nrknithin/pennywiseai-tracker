@@ -8,12 +8,9 @@ import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.nrknithin.fintrack.data.database.entity.AccountBalanceEntity
 import com.nrknithin.fintrack.data.manager.SmsScanManager
 import com.nrknithin.fintrack.data.preferences.UserPreferencesRepository
 import com.nrknithin.fintrack.ui.components.AvatarHelper
-import com.nrknithin.fintrack.data.repository.AccountBalanceRepository
-import com.nrknithin.fintrack.utils.CurrencyFormatter
 import com.nrknithin.fintrack.worker.OptimizedSmsReaderWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,15 +23,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.math.BigDecimal
 import javax.inject.Inject
 
+/**
+ * ACCOUNT_SETUP (pick a primary account) was removed: the owner uses different accounts
+ * for different purposes, so there is no primary one to pick, and the step also could not
+ * work once the scan stopped blocking - accounts are DISCOVERED by that scan. Settings
+ * still offers the same choice, with the same currency side effect
+ * (SettingsViewModel.setMainAccount), for anyone who does want one.
+ */
 enum class OnBoardingStep {
     WELCOME,
     PROFILE,
     PERMISSIONS,
-    SMS_SCAN,
-    ACCOUNT_SETUP
+    SMS_SCAN
 }
 
 data class OnBoardingUiState(
@@ -55,8 +57,6 @@ data class OnBoardingUiState(
     val scanTimeElapsed: Long = 0L,
     val scanEstimatedRemaining: Long = 0L,
     val scanCompleted: Boolean = false,
-    val accounts: List<AccountBalanceEntity> = emptyList(),
-    val selectedAccountKey: String? = null,
     val isCompleting: Boolean = false
 )
 
@@ -64,7 +64,6 @@ data class OnBoardingUiState(
 class OnBoardingViewModel @Inject constructor(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val smsScanManager: SmsScanManager,
-    private val accountBalanceRepository: AccountBalanceRepository,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -166,15 +165,12 @@ class OnBoardingViewModel @Inject constructor(
             OnBoardingStep.WELCOME -> OnBoardingStep.PROFILE
             OnBoardingStep.PROFILE -> OnBoardingStep.PERMISSIONS
             OnBoardingStep.PERMISSIONS -> {
-                if (_uiState.value.smsPermissionGranted) {
-                    OnBoardingStep.SMS_SCAN
-                } else {
-                    // Skip scan step if permissions not granted
-                    OnBoardingStep.ACCOUNT_SETUP
-                }
+                // SMS_SCAN is the last step now, so with no permission there is nothing
+                // left to show: PERMISSIONS becomes the end of the flow and its own
+                // button completes onboarding.
+                OnBoardingStep.SMS_SCAN
             }
-            OnBoardingStep.SMS_SCAN -> OnBoardingStep.ACCOUNT_SETUP
-            OnBoardingStep.ACCOUNT_SETUP -> OnBoardingStep.ACCOUNT_SETUP // Already last
+            OnBoardingStep.SMS_SCAN -> OnBoardingStep.SMS_SCAN // Already last
         }
         _uiState.update { it.copy(currentStep = nextStep) }
     }
@@ -186,13 +182,6 @@ class OnBoardingViewModel @Inject constructor(
             OnBoardingStep.PROFILE -> OnBoardingStep.WELCOME
             OnBoardingStep.PERMISSIONS -> OnBoardingStep.PROFILE
             OnBoardingStep.SMS_SCAN -> OnBoardingStep.PERMISSIONS
-            OnBoardingStep.ACCOUNT_SETUP -> {
-                if (_uiState.value.smsPermissionGranted) {
-                    OnBoardingStep.SMS_SCAN
-                } else {
-                    OnBoardingStep.PERMISSIONS
-                }
-            }
         }
         _uiState.update { it.copy(currentStep = previousStep) }
     }
@@ -248,39 +237,16 @@ class OnBoardingViewModel @Inject constructor(
                                     scanSaved = outputSaved
                                 )
                             }
-                            loadAccounts()
                         }
                         WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
                             _uiState.update {
                                 it.copy(isScanning = false, scanCompleted = true)
                             }
-                            loadAccounts()
                         }
                         else -> { /* ENQUEUED, BLOCKED */ }
                     }
                 }
         }
-    }
-
-    fun loadAccounts() {
-        viewModelScope.launch {
-            val accounts = accountBalanceRepository.getAllLatestBalances().first()
-                .filter { !it.isCreditCard && it.balance != BigDecimal.ZERO }
-            _uiState.update { state ->
-                state.copy(
-                    accounts = accounts,
-                    selectedAccountKey = if (accounts.size == 1) {
-                        "${accounts[0].bankName}_${accounts[0].accountLast4}"
-                    } else {
-                        state.selectedAccountKey
-                    }
-                )
-            }
-        }
-    }
-
-    fun selectAccount(accountKey: String) {
-        _uiState.update { it.copy(selectedAccountKey = accountKey) }
     }
 
     fun completeOnboarding(onComplete: () -> Unit) {
@@ -295,25 +261,6 @@ class OnBoardingViewModel @Inject constructor(
             }
             if (state.selectedBackgroundColor >= 0 && state.selectedBackgroundColor < backgroundColors.size) {
                 userPreferencesRepository.updateProfileBackgroundColor(backgroundColors[state.selectedBackgroundColor])
-            }
-            if (state.selectedAccountKey != null) {
-                userPreferencesRepository.updateMainAccountKey(state.selectedAccountKey)
-                // The main account defines the user's default currency. Manual accounts
-                // store the currency the user chose; SMS-tracked accounts fall back to the
-                // bank parser's currency (their stored value may be the INR default even
-                // for a non-INR bank).
-                val mainAccount = state.accounts.firstOrNull {
-                    "${it.bankName}_${it.accountLast4}" == state.selectedAccountKey
-                }
-                if (mainAccount != null) {
-                    val currency = CurrencyFormatter.resolveAccountCurrency(
-                        sourceType = mainAccount.sourceType,
-                        storedCurrency = mainAccount.currency,
-                        bankName = mainAccount.bankName
-                    )
-                    // Won't override a currency the user explicitly picked in Settings.
-                    userPreferencesRepository.applyMainAccountCurrency(currency)
-                }
             }
             userPreferencesRepository.updateHasCompletedOnboarding(true)
             _uiState.update { it.copy(isCompleting = false) }

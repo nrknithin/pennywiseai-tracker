@@ -1,7 +1,5 @@
 package com.nrknithin.fintrack
 
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,7 +7,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -66,21 +63,17 @@ fun FinTrackApp(
         return
     }
 
-    // Migrate existing users: if they already have SMS permission from the old flow,
-    // auto-complete onboarding so they aren't forced through it on update
-    // Gated on the sign-in gate being cleared: left ungated it auto-completes onboarding
-    // while the user is still on the sign-in screen, and the PROFILE step that adopts the
-    // Google name would then never render.
-    LaunchedEffect(themeUiState.hasCompletedOnboarding, themeUiState.isAuthGateCleared) {
-        if (themeUiState.isAuthGateCleared && !themeUiState.hasCompletedOnboarding) {
-            val hasSmsPermission = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.READ_SMS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (hasSmsPermission) {
-                actualThemeViewModel.markOnboardingCompleted()
-            }
-        }
-    }
+    // REMOVED: the upstream "migrate existing users" effect, which auto-completed
+    // onboarding whenever READ_SMS was already granted.
+    //
+    // It existed so a PennyWise user updating the app was not dragged back through a
+    // first-run flow. In this fork it does active harm: SMS permission is granted on the
+    // owner's phone, so the moment the gate cleared it marked onboarding complete and a
+    // genuinely new account was dropped straight onto Home — never seeing the PROFILE
+    // step that adopts the Google name, which is the entire point of the sign-in. A new
+    // account signing in now resets has_completed_onboarding (see
+    // UserPreferencesRepository.applyGoogleIdentity) and this effect would have undone
+    // that within a frame.
 
     // Set correct start destination based on loaded preferences.
     // The sign-in gate is decided HERE and never later: FinTrackNavHost pins this value

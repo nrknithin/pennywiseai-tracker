@@ -9,7 +9,9 @@ blocks the build.
 
 - **Baseline:** upstream `sarim2000/pennywiseai-tracker` @ `c512c7c` (15 Sep 2026, schema v62)
 - **Branch:** `fin/main` — never pushed by automation
-- **Last updated:** 2026-09-18 (spec 04 §4.6's Timber log redactor, the first manual device checklist, and one `DuesTimingConfig` shared by the payment-notice merge and the settler. **The app gate is RED**: `DuesTimingConfig.amountTolerance` never got its percentage arm, so one `DueMergeEngineTest` case fails — 783 app tests, 1 failure. Parser gate green, 2,213. Fix that before anything else: Next action item 10)
+- **Last updated:** 2026-09-19 (**the app gate is GREEN — 906 tests (72 suites), 0 failures, 0 skipped**, `./init.sh app`, every test task forced to re-run and counted from the JUnit XML. The red recorded below was `DuesTimingConfig.amountTolerance` missing its percentage arm; `238d41a3 fix(dues): apply the percentage amount tolerance, which was dead config` closed it, and Next action item 10 is now **Closed**. The parser gate was **not** re-run today — its last measured figure is 2,248 tests (162 suites), 0 failures, 2026-09-18 14:38, which is larger than the 2,213 this file used to quote because the sender-discovery work landed between the two runs)
+
+> **Superseded within the same session.** The 906 figure was measured at 10:49 over a tree that has since gained the phantom-account fix (`worker/OptimizedSmsReaderWorker.kt`), the merge guard (`presentation/accounts/ManageAccountsViewModel.kt`, `MergeAccountsSheet.kt`), the Settings Pro-section removal (`ui/screens/settings/SettingsScreen.kt`), the staged deletion of `ui/components/UnifiedAccountsCard.kt`, and two new suites (`AccountMergeGuardTest`, `PlaceholderAccountTest`). None of that is compiled. Re-run the gate before trusting any number here.
 
 ## Toolchain
 
@@ -41,12 +43,12 @@ A parser run therefore costs ~15s rather than ~1s on a warm build, because the t
 
 | ID | Milestone | Schema | State | Gate |
 |---|---|---|---|---|
-| M0 | Toolchain + green baseline | 62 | **done** | `./init.sh parser` green — 2,213 tests (162 suites), 0 failures, measured 2026-09-18 |
+| M0 | Toolchain + green baseline | 62 | **done** | `./init.sh parser` green — 2,248 tests (162 suites), 0 failures, last measured 2026-09-18 14:38 (2,213 until the sender-discovery work landed) |
 | M1a | Email parsers (parser-core) | — | **done** | included in the 2,213 above |
 | M1b | Room v63 schema | 63 | **done** | `./init.sh app` green |
 | M1c | IMAP client + body extractor + credential store | 63 | **done** | green: FakeMailboxClientTest 17, ImapSyncAlgorithmTest 10, ImapMessageReadTest 12, EmailBodyExtractorTest 22 |
-| M1d | Ingest pipeline + dedup engine | 63 | in-progress | Wired end to end and green, measured 2026-09-18: DedupEngineTest 68, EmailTransactionIngestorTest 32, EmailSyncWorkerTest 21, PlausibleDueSettlerTest 17, DueMergeEngineTest 81, DueRepositoryTest 23, DueDaoTest 20, IngestingEmailBatchProcessorTest 9, RoomOwnAccountSourceTest 11. All four code defects the 2026-09-17 review found are fixed and pinned by tests; §14.5 re-typing and §20.4 step 7 landed on 2026-09-18, and **all three defects that stood against that newest code are now closed too** — the DAO returns the candidate set instead of one row, a payment confirmation is ordered by the amount it states, and it no longer lends the due an authority it never earned. **No code defect is open against M1d.** What is left is **not code**: no screen can connect a mailbox yet, so `EmailSyncRunner.run()` returns `NotConfigured` on every real run — see NEEDS-YOU.md, "How a mailbox gets connected". Not `done` until a real sync is watched on a device. **Since the evening run of 2026-09-18 this milestone's own suite is red**, and for the first time the cause is a code defect again: `DuesTimingConfig.amountTolerance` returns the absolute tolerance and never reads its `billed` parameter, so `DueMergeEngineTest > the percentage tolerance widens the match…` fails and `amountTolerancePct` has no production reader at all. It is a gap in this run's own refactor and a regression against `9ddaf746`, where both call sites computed the percentage themselves. Next action item 10. |
-| M2 | Pending, commitments, settings backbone (spec 07 puts screen 47, Email Settings, here) | 64 | todo | Commitments entered via UI; dues generated with no false "late" |
+| M1d | Ingest pipeline + dedup engine | 63 | in-progress | Wired end to end and green, re-measured 2026-09-19 from the JUnit XML: DedupEngineTest 68, EmailTransactionIngestorTest 32, EmailSyncWorkerTest 21, PlausibleDueSettlerTest 21, DueMergeEngineTest 85, DueRepositoryTest 23, DueDaoTest 20, IngestingEmailBatchProcessorTest 9, RoomOwnAccountSourceTest 11, and, from the sender-discovery work, SenderDiscoveryTest 24, MailboxDiscoveryTest 18, SenderOverrideDaoTest 16, ImapRawSearchTest 16, DiscoverSendersUseCaseTest 14. All four code defects the 2026-09-17 review found are fixed and pinned by tests; §14.5 re-typing and §20.4 step 7 landed on 2026-09-18, and **all three defects that stood against that newest code are now closed too** — the DAO returns the candidate set instead of one row, a payment confirmation is ordered by the amount it states, and it no longer lends the due an authority it never earned. **No code defect is open against M1d.** What is left is **not code**: no screen can connect a mailbox yet, so `EmailSyncRunner.run()` returns `NotConfigured` on every real run — see NEEDS-YOU.md, "How a mailbox gets connected". Not `done` until a real sync is watched on a device. **The red recorded here on the evening of 2026-09-18 is fixed**: `DuesTimingConfig.amountTolerance` ignored its `billed` parameter, so §20.5 step 4's percentage arm did not exist; `238d41a3` implements it (`amountToleranceAbs` or `billed × pct ÷ 100`, whichever is larger, percent and not a fraction) and the whole suite is green again. Next action item 10, Closed. |
+| M2 | Pending, commitments, settings backbone (spec 07 puts screen 47, Email Settings, here) | 64 | todo | Commitments entered via UI; dues generated with no false "late". **One piece of M2 landed early, at v63 rather than v64**: `sender_overrides` (entity, DAO, `SenderOverrideRepository`, `SenderDiscovery`, `DiscoverSendersUseCase`, `SenderDiscoveryWorker`), in `9fb550d9`. Nothing else of M2 exists — no commitments UI, no settings backbone, no screen 47 — and the schema is still 63, so this stays `todo` |
 | M3 | Money plan | 65 | todo | Cycle shows spendable + run-rate from entered salary |
 | M4 | Loans and EMI | 66 | todo | Schedules built; EMI debits settle schedule rows |
 | M5 | Receipts | 67 | todo | Order emails link to card transactions; refunds reduce spend |
@@ -241,6 +243,34 @@ A parser run therefore costs ~15s rather than ~1s on a warm build, because the t
   connect a mailbox — and the file says so plainly rather than reading as runnable today. Two
   defects **in the checklist itself** were found by review before anyone made the trip; they are
   Next action item 11 and must be fixed before the device pass, not after it
+- **What landed between the red run of 2026-09-18 and this 2026-09-19 update**, read off
+  `git log` rather than remembered, grouped by theme (not strictly chronological): `238d41a3` the dues percentage arm (item 10);
+  `8db8773f` **Android only** — the iOS app, the web front end and every KMP native target are
+  gone; `:shared` survives as an Android library `:app` still depends on
+  (`settings.gradle.kts:28`, `app/build.gradle.kts:312`), so the modules are `app`,
+  `parser-core` and `shared`; `bab88f01` `.env` git-ignored
+  before anything is put in it; `3e2d31bd` the order senders the corpus never saw, and two Amazon
+  parser defects; `49fe83a7` the `personal` flavor, which could not compile before; `9fb550d9`
+  **sender discovery** — `sender_overrides` at v63 plus `JavaMailImapClient`, raw IMAP search and
+  mailbox discovery (M2 work landed early; see the milestone table); `9cd654b4` / `1125bac5` the
+  rebrand to **FinTrack**, `com.nrknithin.fintrack`, with every upstream connection cut;
+  `3daa64cb` a larger Gradle test heap, because the test task was dying on the old one;
+  `fb443a2e` / `fa9a7ca8` START-HERE for a cold handoff; `9d1bd147` the **Google sign-in gate** —
+  `AuthGateway` with a `cloud` implementation (`GoogleAuthGateway`, Credential Manager + Google
+  ID, no Firebase SDK) and a `nocloud` one (`NoAuthGateway`, F-Droid), `SignInScreen`,
+  `AuthRepository`, and five new packages added to `PiiLintTest.forkOwnedPaths`. The sign-in work
+  is **still partly uncommitted** in the working tree as this is written — `git status` lists
+  `AuthGateway`, `AuthRepository`, `GoogleAuthGateway`, `SignInScreen`, the onboarding screen and
+  its viewmodel, `UserPreferencesRepository` and three test files — and the 906-test run below was
+  measured over that tree, not over `HEAD`
+- `app` + `local.properties`: **release signing and the Google sign-in client id are both
+  configured on this machine.** `app/build.gradle.kts` reads `RELEASE_STORE_FILE` /
+  `RELEASE_STORE_PASSWORD` / `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD` out of the git-ignored
+  `local.properties` for the `release` signing config (the block is skipped entirely for `fdroid`,
+  which stays unsigned), and `fin.google.webClientId` out of the same file into
+  `BuildConfig.GOOGLE_WEB_CLIENT_ID`, defaulting to `""` so an unconfigured checkout still
+  compiles and the gate stays green. Details in NEEDS-YOU.md; no path, secret or fingerprint is
+  recorded anywhere in the repo
 
 ## Next action
 
@@ -262,8 +292,10 @@ again. The only thing left for the owner there is the override — a temporary d
 entry point sooner — and M1d stays `in-progress` either way until a real sync is watched on a
 device. Do not invent a third answer here; build M2 around it.
 
-**The app gate is red as this is written — see item 10, which comes before everything else in
-this list — and the parser gate is green.** All three risks that stood here on 2026-09-17 are
+**The app gate is green as this is written — 906 tests (72 suites), 0 failures, 0 skipped,
+`./init.sh app` on 2026-09-19 — and item 10, the red that stood here, is closed.** The parser
+gate was not re-run today; its last forced run, 2026-09-18 14:38, was 2,248 tests (162 suites),
+0 failures. All three risks that stood here on 2026-09-17 are
 closed, though: the gate's
 false checkmark, the unrecorded truncation, and the untested trim query. See "Done" for what each
 became. One consequence of closing the first is worth carrying: **every gate-log row from the
@@ -271,10 +303,11 @@ became. One consequence of closing the first is worth carrying: **every gate-log
 gates green" claims were never proof that the tests ran. (Count from the row's own text, not
 from its position — this list grows at the top.) Those old 2,175 + 722 totals are independently
 corroborated by the runs since, but they are no longer the current ones: the latest measured
-figures are **2,213 parser (162 suites), green**, and **783 app (61 suites) with one failure** —
-the failure being item 10. The last all-green total was 2,974 at commit `9ddaf746`; there is no
-current all-green total, and the run that closes item 10 must re-measure both gates before
-quoting one. The milestone table above quotes the parser figure rather than M0's original 2,175.
+figures are **2,248 parser (162 suites), green, 2026-09-18** and **906 app (72 suites), green,
+0 failures, 0 skipped, 2026-09-19**. Both were forced to execute and counted from the JUnit XML;
+they were measured a day apart, so **2,248 + 906 = 3,154 is a sum of two runs over two different
+trees, not one all-green total** — the next run that needs a single figure has to measure both
+gates in one pass. The milestone table above quotes the parser figure rather than M0's original 2,175.
 The counts only ever go up, so a stale one reads as a passing gate while hiding tests that never
 ran — re-run `./init.sh` before marking M1d or anything above it `done` on the strength of an old
 row, and refresh these numbers whenever you do. An earlier draft of this paragraph, written the
@@ -285,6 +318,13 @@ The three items this run closed are kept in place, marked **Closed**, so the "Cl
 item N" notes elsewhere still resolve. (Those notes refer to the numbering of the run that closed
 each one, not to the list as it stands now.) Two new risks were found by the review **of this
 run's own fixes** and are recorded below as items 4 and 5.
+
+As of 2026-09-19, items **4, 5 and 10 are closed as well** — the shared `DuesTimingConfig`, the
+three tests that can now fail, and the percentage arm itself. Still open and verified against the
+tree on that date: **6** (`body_trimmed` is write-only), **8** (`AutoMigration(62, 63)` has never
+executed), **9** (nits), **11** (two defects in the QA checklist's own greps) and **12** (the
+`util` package is outside `PiiLintTest`). **13** is new and is a documentation contradiction, not
+code.
 
 1. **Closed — the DAO returns the candidate set, so SQL no longer chooses which bill a reading
    merges into.** `findMergeCandidate`'s `ORDER BY due_date ASC LIMIT 1` meant production never
@@ -312,8 +352,13 @@ run's own fixes** and are recorded below as items 4 and 5.
    `ISSUER_REMINDER`, so `precedenceOf` and `mergeRuleFor` are unchanged; that rung is now inert in
    both directions and its comment says so. An issuer *statement* beside a confirmation still raises
    the standing, and a test pins that `standingOf` is not over-broad.
-4. **Risk — `DueMergeConfig` and `SettlementConfig` now hold the same four figures twice, and
-   nothing ties them together.** `paymentNoticeEarlyDays` (45), `paymentNoticeLateDays` (60),
+4. **Closed — one `DuesTimingConfig` now holds the four figures and both configs embed it.**
+   `app/src/main/java/com/nrknithin/fintrack/domain/engine/DuesTimingConfig.kt` carries
+   `earlyPayDays` 45, `latePayDays` 60, `amountToleranceAbs` 1.00 and `amountTolerancePct` 0 in
+   one place, `DueMergeConfig` and `SettlementConfig` each embed it rather than restating it, and
+   `PlausibleDueSettlerTest` asserts the two sides read the same values — so wiring
+   `settings.dues.*` into one and not the other is no longer possible in M2. The risk as it stood:
+   `paymentNoticeEarlyDays` (45), `paymentNoticeLateDays` (60),
    `amountToleranceAbs` (1.00) and `amountTolerancePct` (0) are defaulted independently in
    `DueMergeEngine.kt` and in `EmailTransactionIngestor.kt`, yet the entire safety argument in
    `mergeWindow`'s KDoc is that the two spans are *the same* span: a confirmation that could reach a
@@ -324,7 +369,14 @@ run's own fixes** and are recorded below as items 4 and 5.
    test stays green. Cheapest fix: one `DuesTimingConfig` both embed, or failing that a test that
    compares the four pairs. **Take this first** — it is five minutes now and a silent wrong answer
    later.
-5. **Risk — three behaviours added to `confirmationScore` have no test that can fail.** Every new
+5. **Closed — the three behaviours now have tests that can fail, and the asymmetry is written
+   down.** `DueMergeEngineTest` is 85 cases and three of them are these: `the percentage tolerance
+   widens the match, in percent and not as a fraction` (varies `amountTolerancePct` — 1 and 5 —
+   and is the case that caught item 10), `the bill whose amount was paid beats the bill whose
+   minimum was paid` (pits +50 against +30, so collapsing them to one constant goes red) and `the
+   minimum due is matched on the absolute tolerance alone`. The deliberate asymmetry — percentage
+   against the billed amount, absolute tolerance alone against the minimum — is stated in
+   `DuesTimingConfig`'s KDoc and in a FORK-CHANGES.md row. The risk as it stood: every new
    ordering test uses exact equality (7800.00 against 7800.00, 390.00 against a 390.00 minimum), so
    setting `amountToleranceAbs` to zero, or deleting the tolerance expression outright, leaves all 81
    `DueMergeEngineTest` cases green; `amountTolerancePct` is never varied from zero anywhere; and no
@@ -347,7 +399,9 @@ run's own fixes** and are recorded below as items 4 and 5.
    `bodyTrimmed = false`. A stamped row is therefore permanently unreplayable rather than
    temporarily so. The flag itself is right and C7-safe — it fails closed — but the escape hatch
    is missing and no test pins the obligation, so nothing will notice when M5 binds R-11-10 and
-   quietly parses the prefix anyway. Settle it with R-11-10, not before.
+   quietly parses the prefix anyway. Settle it with R-11-10, not before. **Still open, re-checked
+   2026-09-19:** `EmailMessageDao.insert` is still `OnConflictStrategy.IGNORE`, and nothing under
+   `app/src` writes `bodyTrimmed = false`.
 7. **Closed — `DueDaoTest` now probes the candidate query's upper date bound.** (The query was
    called `findMergeCandidate` when this was written; item 1 renamed it and both tests moved with
    it, reading the head of the returned list.) It did not:
@@ -374,6 +428,8 @@ run's own fixes** and are recorded below as items 4 and 5.
    `androidTest.assets.srcDirs += files("$projectDir/schemas")`, which costs nothing in the APK
    but needs a device, so it cannot be part of `./init.sh`. M2's `Migration(63, 64)` is the first
    hand-written migration and should land together with it. Recorded in FORK-CHANGES.md.
+   **Still open, re-checked 2026-09-19:** `app/src/androidTest` holds only upstream's
+   `ExampleInstrumentedTest`, and `SCHEMA_VERSION` is still 63.
 9. Nits. Two from the previous run are **closed**: `paymentNoticeWindowDays` is gone, replaced by
    the asymmetric `paymentNoticeEarlyDays` 45 / `paymentNoticeLateDays` 60 that §20.5 actually
    specifies (its FORK-CHANGES row rewritten with it), and the `CRED_ISSUERS[...] ?: return
@@ -408,10 +464,25 @@ run's own fixes** and are recorded below as items 4 and 5.
    unreachable because both config stores already coerce; four `RoomOwnAccountSourceTest`
    assertions pin a registry order only the fake provides (the real query is `ORDER BY balance
    DESC` and every fixture ties at 1000.00); and `EmailMessageDao` now has two hand-written fakes
-   where the shared one lacked a single method body.
-10. **Blocker, and the reason the gate is red — `DuesTimingConfig.amountTolerance(billed)` never
-    reads `billed`, so §20.5 step 4's percentage arm does not exist.** The body is
-    `= amountToleranceAbs`. Its own KDoc two lines above promises "the absolute tolerance, or the
+   where the shared one lacked a single method body. **Re-checked 2026-09-19, all still open:**
+   `groupValues[2].takeLast(4)` at three parser sites, `PiiLintTest` still filtering
+   `extension == "kt"`, `EmailIngestFakes.emailRow()` still without a `bodyTrimmed` parameter,
+   and both `init.sh` nits — the CR-strip at line 164, and `rm -rf "$results"` running before
+   Gradle.
+10. **Closed — `DuesTimingConfig.amountTolerance(billed)` applies the percentage arm, and the gate
+    is green again.** `238d41a3 fix(dues): apply the percentage amount tolerance, which was dead
+    config` gives the body its two branches: a non-positive `amountTolerancePct` still returns
+    `amountToleranceAbs` unchanged, and otherwise the larger of that and
+    `billed.abs() × pct ÷ 100` at scale 2, `HALF_UP`, compared with `compareTo` rather than
+    `equals` so `500.00` and `500` count as the same amount. Percent and not a fraction, divided
+    by 100 in this one place, per spec 28 §28.4's 0–10 range. `DueMergeEngineTest.kt:1176` passes
+    and the app gate is 906 tests, 0 failures. **The two assertions the entry below flagged for
+    re-checking (then lines 1181 and 1184) are worth a look by whoever next touches that test:
+    they were passing by accident under the stub, and nothing in the fix commit re-examined
+    them.** Also worth knowing: the FORK-CHANGES.md row for §20.5 step 4 still reads "**Decided,
+    documented, and NOT YET IMPLEMENTED — the tree is red on exactly this**", which is no longer
+    true — that is item 13. The defect as it stood: the body was
+    `= amountToleranceAbs`. Its own KDoc two lines above promised "the absolute tolerance, or the
     percentage of that bill where it is larger (≤ tol_abs **or** ≤ due.amount×tol_pct)", and
     `amountTolerancePct`'s KDoc calls this "the one place that conversion happens"; neither is
     true — there is no multiplication and no division by 100. It compiled silently because Kotlin
@@ -427,10 +498,9 @@ run's own fixes** and are recorded below as items 4 and 5.
     test assertions. Invisible at today's default of 0, which is exactly why it has to close before
     M2 wires `settings.dues.*` in. Fix: `amountToleranceAbs.max(billed × amountTolerancePct ÷ 100)`
     with the `BigDecimal` scale and rounding chosen explicitly and a zero/negative `billed`
-    guarded. While there, re-check the last two assertions of that same test (lines 1181 and 1184):
-    they pass today only by accident, because with the stub every inexact amount falls through to
-    the date tie-break and yields id 1. **Take this first — nothing else in this file matters while
-    the tree is red.**
+    guarded — which is what landed. The note about the last two assertions of that same test
+    (then lines 1181 and 1184) is carried up into the Closed paragraph above rather than left
+    here, because it outlived the fix.
 11. **Two defects in `docs/QA-CHECKLIST.md` §AC-11-04, found before anyone made the device trip.**
     (a) Grep G5, `grep -cE '^[VD]/'`, can never match what the capture step produces: it runs
     `adb logcat -d` with no `-v`, and the default format has been `threadtime` since Android 7
@@ -444,7 +514,9 @@ run's own fixes** and are recorded below as items 4 and 5.
     Fin-originated logcat line at all, G1, G2 and G5 all pass vacuously, and the checklist would
     record AC-11-04 as passed without the redactor ever having run. AC-11-04 needs a step that
     establishes at least one Fin line reached the log before its greps mean anything. Both fixes
-    belong **before** the device pass queued in NEEDS-YOU.md, not after it.
+    belong **before** the device pass queued in NEEDS-YOU.md, not after it. **Both still open,
+    re-checked 2026-09-19:** G5 is still `grep -cE '^[VD]/'`, and the section still has no
+    positive control.
 12. **Risk — the new `…/tracker/util` package is outside `PiiLintTest` entirely.**
     `forkOwnedPaths` lists `data/email`, `data/database`, `data/backup`, `domain/engine`, `worker`,
     `di`, `data/repository` and their test twins, and its own KDoc ends "Add a path here whenever
@@ -457,10 +529,24 @@ run's own fixes** and are recorded below as items 4 and 5.
     immediately before this work was `d22879c5 fix(lint): scan the four fork-owned paths
     PiiLintTest was missing`, so the same hole reopened one commit later. Add both paths, and while
     there decide whether `util` should simply fold into the `utils` package the rest of `:app`
-    uses; it is a one-file rename and nothing depends on the path.
+    uses; it is a one-file rename and nothing depends on the path. **Still open, re-checked
+    2026-09-19:** neither `util` path is in `forkOwnedPaths`, even though `9d1bd147` added the
+    five Google sign-in packages to that same list — the list is being maintained, and this one
+    has now been missed twice.
+13. **The FORK-CHANGES.md row for §20.5 step 4 contradicts the code.** It still says "**Decided,
+    documented, and NOT YET IMPLEMENTED — the tree is red on exactly this**", describes the shipped
+    body as `fun amountTolerance(billed: BigDecimal) = amountToleranceAbs`, and sends the reader to
+    Next action item 10 for a failure that no longer happens. `238d41a3` implemented exactly the
+    reading that row decided on, so only the row's *status* is wrong, not its decision. Whoever
+    owns FORK-CHANGES.md should rewrite that one cell; this file cannot, and the two must not be
+    left disagreeing, because the row is the written record of which of two readings the fork
+    chose.
 
-Then M2 (schema v64): commitments, the settings backbone, and `sender_overrides`. Screen 47 rides
-with it.
+Then M2 (schema v64): commitments and the settings backbone. Screen 47 rides with it.
+`sender_overrides` was the third item on this line and has already landed, at v63 rather than
+v64, in `9fb550d9` — entity, DAO, repository, `SenderDiscovery`, `DiscoverSendersUseCase` and
+`SenderDiscoveryWorker` — so M2's schema step is whatever commitments and settings need, not
+that table.
 
 ## Verification log
 
@@ -468,6 +554,7 @@ Newest first. The workflow appends one row per run; never rewrite history here.
 
 | When | Command | Result |
 |---|---|---|
+| 2026-09-19 | `./init.sh app` @ `fin/main`, over the working tree as it stood at 10:49 | **GREEN — 906 tests (72 suites), 0 failures, 0 errors, 0 skipped**, summed from all 72 JUnit XML files in `app/build/test-results/testStandardDebugUnitTest`, which is one file per test class in `app/src/test`, so nothing was skipped silently. `build/init-gate/_app_testStandardDebugUnitTest.log` shows a bare `> Task :app:testStandardDebugUnitTest` and `BUILD SUCCESSFUL in 40s`, which is the only form the rewritten gate accepts. **This closes the red of the two rows below**: `238d41a3` gave `DuesTimingConfig.amountTolerance` its percentage arm, and `DueMergeEngineTest` — 81 cases then, **85** now — passes in full. Grown since the last app row: DueMergeEngineTest 81 → 85, and the sender-discovery suites SenderDiscoveryTest 24, MailboxDiscoveryTest 18, SenderOverrideDaoTest 16, ImapRawSearchTest 16, DiscoverSendersUseCaseTest 14, plus the sign-in suites SignInViewModelTest 12, AuthRepositoryTest 7, OnBoardingNameLockTest 5. Two limits on what this row proves, stated rather than left to be discovered. **First, the parser gate was not re-run today** — its last forced run is the row's neighbour in `build/init-gate`, 2026-09-18 14:38, 2,248 PASSED / 0 FAILED over 162 suites, which is already 35 more than the 2,213 this file quoted, so the two gates were last measured a day apart and there is no single all-green total. **Second, the tree was dirty**: the Google sign-in work was partly uncommitted (`AuthGateway`, `AuthRepository`, `GoogleAuthGateway`, `SignInScreen`, the onboarding screen and viewmodel, `UserPreferencesRepository`, three test files), so these 906 tests describe a working tree, not a commit, and are not reproducible from `git` alone |
 | 2026-09-18 | `./init.sh parser` then `./init.sh app` @ `fin/main`, over the whole working tree this run committed | **PARSER GREEN, APP RED.** Parser: **2,213 tests (162 suites), 0 failures, 0 errors**, forced with `--rerun-tasks`; `PiiLintTest` 8, green. App: **783 tests (61 suites), 1 failure, 0 errors** — `DueMergeEngineTest > the percentage tolerance widens the match, in percent and not as a fraction`, `AssertionError: expected:<2> but was:<1>` at `DueMergeEngineTest.kt:1176`. Reproduced on three separate runs, including one with the results directory deleted first, so it is not a flake and not a stale report. **The cause is this run's own code, and it is Next action item 10**: `DuesTimingConfig.amountTolerance` returns the absolute tolerance and never reads its `billed` parameter, so §20.5 step 4's percentage arm is missing and `amountTolerancePct` has no production reader left. **This corrects the row immediately below**, which attributed the same failure to "a second agent's uncommitted work" that would land separately: both halves of this run — the log redactor and the dues-timing refactor — were in flight in one working tree and are committed together here, so that attribution was wrong rather than merely unlucky, and nothing was going to land and fix it. `LogRedactorTest` is 14 tests, 0 failures, in every run. One method note worth keeping: the parser gate must be forced with `--rerun-tasks` (or `init.sh`'s `--rerun`) to say anything at all about changes under `app/`, because `PiiLintTest` walks the filesystem at run time and Gradle's up-to-date check cannot see those inputs — a first invocation here returned `:parser-core:test UP-TO-DATE`. And, as the row below says at length, the ProGuard half of the logging change is **not verified and not verifiable headlessly** |
 | 2026-09-18 | `./init.sh app` @ `fin/main`, on the working tree carrying the spec 04 §4.6 log-redactor change | **RED — and not on this change.** 783 app tests (61 suites), **1 failure, 0 errors, 0 skipped**. The single failure is `DueMergeEngineTest > the percentage tolerance widens the match, in percent and not as a fraction`, `AssertionError: expected:<2> but was:<1>` at `DueMergeEngineTest.kt:1176`. That test did not exist at HEAD: it is inside a `+126` line hunk of a **second agent's uncommitted work** on `DueMergeEngine.kt` / `DuesTimingConfig.kt`, in flight in the same working tree while this ran. The gate was run twice, ten minutes apart, with the same result, so this is that work's current state and not a flake. The log-redactor change touches `libs.versions.toml`, `app/build.gradle.kts`, `proguard-rules.pro`, `FinTrackApplication.kt` and two new files under `…/util/`, none of which the dues engine reads. Its own suite, `LogRedactorTest`, is **14 tests, 0 failures, 0 errors** in both runs, and `:app:compileStandardDebugKotlin` succeeded, which is what proves the Timber dependency resolves from Maven Central. **Nothing here is a green claim for the tree as a whole — re-run the gate once the dues work lands.** Separately and importantly: **the ProGuard half of this change was not verified and cannot be, headlessly.** `-assumenosideeffects` is applied by R8 only in a minified release build, so neither the new Timber rules nor the inherited `android.util.Log` block is exercised by `./init.sh`, which builds `standardDebug`. Confirming them needs `:app:assembleStandardRelease` and the logcat grep in docs/QA-CHECKLIST.md §AC-11-04 — on a release build, on a device |
 | 2026-09-18 | `./init.sh parser` then `./init.sh app` @ `fin/main`, on the tree committed as the payment-confirmation commit | **GREEN** — 2,213 parser (162 suites) + 761 app (60 suites) = **2,974 tests, 0 failures, 0 errors, 0 skipped**, summed from the JUnit XML. Grown since the previous row: `CardPaymentConfirmationDueParserTest` 23 → 38, DueMergeEngineTest 72 → 81, DueRepositoryTest 21 → 23, DueDaoTest 18 → 20. `PiiLintTest` 8, green. Both fixes were checked by mutation before this run, not only by the suite passing: reverting the DAO's SQL alone reddened exactly the four new candidate-set cases, and three separate mutations of the merge engine (date-first ordering, confirmations counted in `standingOf`, the window back to 60/60) reddened exactly five of its nine new cases — the other four are pins of behaviour that had to survive the change and are green either way, which is stated here rather than dressed up. Second half of the gate: a case-insensitive `git grep` for the owner's Windows account name returns zero lines. **This row replaces a draft row written mid-run** that said "the app gate was not run — nothing under `app/` was touched": three files under `app/` were modified in the same working tree, including the production `DueMergeEngine`, so that sentence was false at the moment it was written and would have been the only written evidence for a change to the merge engine. The gate below was re-run over the whole tree to produce the figures above |

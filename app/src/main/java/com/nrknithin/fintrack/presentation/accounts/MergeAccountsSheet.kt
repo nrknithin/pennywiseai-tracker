@@ -43,8 +43,9 @@ import com.nrknithin.fintrack.ui.theme.Spacing
  *
  *  Step 1 — pick the **source** (account whose transactions will be moved).
  *  Step 2 — pick the **target** (account they'll be moved into). The list
- *           filters to accounts compatible with the source: same currency,
- *           same `isCreditCard` flag, not the source itself.
+ *           filters to accounts [AccountMergeGuard] would accept: same
+ *           currency, same `isCreditCard` flag, not the source itself, and
+ *           related to the source by bank or by account number.
  *  Step 3 — a confirmation dialog showing the actual transaction count.
  *
  * On confirm the sheet fires [onConfirm] and dismisses; the parent
@@ -96,7 +97,7 @@ fun MergeAccountsSheet(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Move all transactions from one account into another. The source account is removed when done.",
+                        text = "Move all transactions from one account into another. The source account, and its balance history, are removed when done.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = Spacing.xs, bottom = Spacing.md)
@@ -123,7 +124,11 @@ fun MergeAccountsSheet(
                 if (targets.isEmpty()) {
                     item(key = "no-targets") {
                         Text(
-                            text = "No other accounts match this one's currency / type.",
+                            // Names the remedy rather than just the refusal — otherwise
+                            // this is a dead end for the case the feature exists for.
+                            text = "No other account matches this one's bank, currency and " +
+                                "type. If two rows are really the same account, rename one " +
+                                "to match the other first.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(top = Spacing.md)
@@ -173,10 +178,13 @@ fun MergeAccountsSheet(
             text = {
                 val n = sourceTxnCount
                 Text(
+                    // Spell out what is destroyed, not just that something is:
+                    // the source's balance snapshots are deleted outright and
+                    // there is no undo and no backup taken first.
                     if (n != null)
-                        "Move $n transactions from ${AccountBalanceEntity.accountLabel(s.bankName, s.accountLast4)} into ${AccountBalanceEntity.accountLabel(t.bankName, t.accountLast4)}. The source account is removed after the move. This can't be undone."
+                        "Move $n transactions from ${AccountBalanceEntity.accountLabel(s.bankName, s.accountLast4)} into ${AccountBalanceEntity.accountLabel(t.bankName, t.accountLast4)}. The source account is removed after the move, and its balance history is deleted permanently. This can't be undone."
                     else
-                        "Move all transactions from ${AccountBalanceEntity.accountLabel(s.bankName, s.accountLast4)} into ${AccountBalanceEntity.accountLabel(t.bankName, t.accountLast4)}. The source account is removed after the move. This can't be undone."
+                        "Move all transactions from ${AccountBalanceEntity.accountLabel(s.bankName, s.accountLast4)} into ${AccountBalanceEntity.accountLabel(t.bankName, t.accountLast4)}. The source account is removed after the move, and its balance history is deleted permanently. This can't be undone."
                 )
             },
             confirmButton = {
@@ -284,12 +292,10 @@ private fun AccountPickerRow(
     }
 }
 
-/** Two accounts can be merged when they share currency + credit-card flag. */
-private fun compatible(a: AccountBalanceEntity, b: AccountBalanceEntity): Boolean {
-    val sameAccount = a.bankName.equals(b.bankName, ignoreCase = true) &&
-        a.accountLast4 == b.accountLast4
-    if (sameAccount) return false
-    if (!a.currency.equals(b.currency, ignoreCase = true)) return false
-    if (a.isCreditCard != b.isCreditCard) return false
-    return true
-}
+/**
+ * Two accounts can be merged when [AccountMergeGuard] says so — the picker
+ * must not offer a target the ViewModel would then refuse, so the rule is
+ * asked for here rather than restated.
+ */
+private fun compatible(a: AccountBalanceEntity, b: AccountBalanceEntity): Boolean =
+    AccountMergeGuard.canMerge(a, b)

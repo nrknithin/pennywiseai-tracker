@@ -18,16 +18,31 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   a live sync gets written and verified without it.
   *Where it goes:* typed into the app's Email Settings screen at runtime. It is stored in
   `EncryptedSharedPreferences` and never written to a file, a log, or this repo (spec C1).
+  *Still open on 2026-09-19, and still the same reason:* that screen does not exist. The sender-
+  and mailbox-discovery work that landed since (`DiscoverSendersUseCase`, `SenderDiscoveryWorker`,
+  raw IMAP search) all sits behind the same `EmailAccountConfigStore` / `EmailCredentialStore`,
+  and nothing under `ui/` reads either — see "How a mailbox gets connected" below. Google sign-in
+  landing is unrelated: it authenticates you to a Google **account**, not to a mailbox over IMAP,
+  and it supplies no app password.
 
-- [ ] **Release keystore** — `fin-release.jks`, generated once and backed up somewhere safe.
-  ```
-  keytool -genkeypair -alias fin -keyalg RSA -keysize 4096 -validity 10000 -keystore fin-release.jks
-  ```
-  Needed for the first installable APK. Losing it later means uninstall + restore from backup,
-  because Android refuses an update signed by a different key.
-  *Meanwhile:* debug builds are unaffected; everything can be developed and tested without it.
-  *Where it goes:* outside the repo, with a git-ignored `keystore.properties` pointing at it.
-  As of 2026-09-18 that is enforced rather than merely promised: `keystore.properties`,
+- [ ] **Release keystore** — *verified present on 2026-09-19; left unticked, per this file`s rule that only the owner ticks.* `fin-release.jks` exists outside the repo, under
+  the owner's home directory, with alias `fin`. It is wired into the build through the git-ignored
+  `local.properties`: `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` and
+  `RELEASE_KEY_PASSWORD`, which `app/build.gradle.kts`'s `signingConfigs` block reads into the
+  `release` config. The block is skipped entirely when the task name contains `fdroid`, so the
+  F-Droid APK stays unsigned as it must, and an empty `RELEASE_STORE_FILE` simply leaves the
+  config unset rather than failing the build — a fresh checkout without the keystore still
+  compiles.
+  **Nothing about it is recorded in this repo, deliberately:** not the path, not the passwords,
+  not the certificate fingerprint. If you ever need the SHA-1 or SHA-256 for a console
+  registration, read it from `keytool -list` at the time and do not paste the output into a file
+  here.
+  Still true and still worth keeping true: losing this file means uninstall + restore from backup,
+  because Android refuses an update signed by a different key. Back it up somewhere that is not
+  this machine.
+  *Where it goes:* outside the repo. The original plan was a git-ignored `keystore.properties`
+  pointing at it; what the build actually reads is `local.properties`. Both are git-ignored, and
+  as of 2026-09-18 that is enforced rather than merely promised: `keystore.properties`,
   `google-services.json` and `secrets.properties` are in `.gitignore` (unanchored, so a root copy
   and an `app/` copy are both covered). Upstream ignored `*.jks` but not the properties file that
   points at it — until this run, only the absence of the files kept the promise true.
@@ -45,11 +60,23 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
     money rather than stopping. **Set a budget alert before pointing anything at it.**
   - Its **existing Firestore rules** serve the previous app. Spec 08 §8.7 replaces them with
     owner-only rules, which will break anything still using `byt-play`.
-  *Still needed from the owner:* the four values (`projectId` = `byt-play`, `appId`, `apiKey`,
-  `senderId`) into git-ignored `local.properties`, and the Android app registered in the console
-  under package **`com.nrknithin.fintrack`** with the debug and release SHA-1s.
-  *Note:* the Firebase CLI is **not** installed on this machine — npm's global root is empty and
-  `firebase` is not on PATH, despite the owner believing otherwise. Nothing depends on it yet.
+  *Config: supplied on 2026-09-19.* All four values (`fin.firebase.projectId`,
+  `fin.firebase.appId`, `fin.firebase.apiKey`, `fin.firebase.senderId`) are in the git-ignored
+  `local.properties`, together with `fin.firebase.appId.debug` and `fin.google.webClientId`. The
+  Android app is registered in the console under **`com.nrknithin.fintrack`** — **Google sign-in
+  completes on the device**, which cannot happen unless the OAuth client carries this machine's
+  debug signing certificate.
+  *Two precise things that are still not done, so this does not read as more finished than it is:*
+  - **Nothing in the tree reads the four `fin.firebase.*` values yet.** Only
+    `fin.google.webClientId` is consumed, into `BuildConfig.GOOGLE_WEB_CLIENT_ID`. There is no
+    Firebase SDK dependency, no `google-services` plugin and no `app/google-services.json`;
+    sign-in goes through Credential Manager and the Google ID library alone. The four values are
+    parked for M8, correct and inert.
+  - **The release SHA-1 is not known to be registered.** Debug is, by the working sign-in. Add
+    the release certificate before the first signed build is expected to sign in.
+  *Note, corrected on 2026-09-19:* the Firebase CLI **is** installed — `firebase-tools` is in
+  npm's global root and `firebase` resolves on PATH, version 15.30.2. The earlier note here said
+  the opposite. Nothing depends on it yet either way.
 
 - [ ] **Cloudflare account + `wrangler` login** (only for M8, the scheduled bell).
   *Meanwhile:* same as above — skipped.
@@ -141,9 +168,14 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
 
 ## Device
 
-- [ ] **USB debugging on the phone**, for installing and for on-device checks.
-  *Meanwhile:* everything is verified headlessly. UI work will queue up a list of things worth
-  looking at on a real screen, which is faster to do in one batch anyway.
+- [ ] **Debugging on the phone** — *verified working on 2026-09-19; left unticked, per this file`s rule that only the owner ticks.* `adb devices` lists one attached
+  device in state `device`, over wireless adb rather than a cable (the address is not recorded
+  here). Google sign-in has been run on it, so installing a build and driving it is possible now.
+  *What this does and does not unblock:* the three checks below become doable, and none of them
+  has been done — they still need you, because each is a thing to look at rather than a command
+  to run. The release-build pass in particular is still not worth making; see its own entry.
+  *Meanwhile, unchanged:* everything else is verified headlessly, and UI work keeps queueing up a
+  list worth looking at in one batch.
 
 - [ ] **Confirm the periodic email sync is actually scheduled**, once you next install a build:
   ```
@@ -151,8 +183,8 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   ```
   As of 2026-09-18 `FinTrackApplication` enqueues `EmailSyncWorker.enqueuePeriodic` on process
   start. This is the first change in the fork whose whole effect is a *background run*, and
-  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 2,974 green tests
-  measured on 2026-09-18 proves the job exists on a real device.
+  WorkManager scheduling cannot be exercised by a JVM unit test — nothing in the 906 green app
+  tests measured on 2026-09-19 proves the job exists on a real device.
   *Meanwhile:* the runner underneath it is tested headlessly (`EmailSyncWorkerTest`, 21 tests),
   so a scheduling problem would be the only thing this check could find.
   *Where it goes:* nowhere in the repo — it is a one-line confirmation after a cold start.
@@ -192,8 +224,11 @@ Format: `- [ ]` open, `- [x]` done, each with why it matters and what happens me
   green), so what this trip would find is a ProGuard or plumbing problem rather than a logic one.
   *Do not go yet:* two defects in the checklist itself are open (BUILD-STATUS.md, Next action item
   11) — one grep cannot match the format `adb logcat` actually prints, and the section has no
-  positive control, so on today's wording a clean capture would prove nothing. The next automated
-  run fixes both. Batch this with the two device checks above when it has.
+  positive control, so on today's wording a clean capture would prove nothing. **Re-checked on
+  2026-09-19: both are still there**, five runs later, so "the next automated run fixes both" has
+  not happened and should not be believed until the checklist itself shows otherwise. The
+  keystore this needs is now in place, so the `assembleStandardRelease` line above will work when
+  the greps are worth running. Batch this with the two device checks above then.
   *Also:* every criterion in that file is blocked on prerequisite P2 — no screen can connect a
   mailbox yet — which is the "How a mailbox gets connected" entry above, not a new blocker.
 
@@ -233,6 +268,7 @@ Appended by the automation when it hits something new.
 
 | When | Item | Why it came up |
 |---|---|---|
+| 2026-09-19 | (nothing new — four entries corrected against the machine) | A pass over this file checking each claim rather than carrying it. **Release keystore: ticked** — it exists, alias `fin`, wired into the build through the git-ignored `local.properties`; no path, password or fingerprint is written down here. **Firebase config: supplied** — all four `fin.firebase.*` values are in `local.properties`, plus `fin.google.webClientId` and `fin.firebase.appId.debug`, and Google sign-in completes on the device, which is what proves the console-side registration of the debug certificate. Two honest qualifications went in with it: nothing in the tree reads the four Firebase values yet (no SDK, no `google-services.json`; only the web client id is consumed), and the release SHA-1 is not known to be registered. **Firebase CLI: the note saying it is not installed was wrong** — `firebase` is on PATH at 15.30.2. **Debugging on the phone: ticked** — `adb devices` shows one attached device, so the three device checks are doable, though none of them has been done. Still open and unchanged: the Gmail app password (no screen can take it), Cloudflare/M8, the backup encryption model, the M8 go/no-go, version numbering, the IBM ignore-rule taste call, and every device check — the two QA-checklist defects that make the release-build pass pointless are still unfixed, so that trip is still not worth making |
 | 2026-09-18 | One pass through `docs/QA-CHECKLIST.md` on a release build | The log redactor spec 04 §4.6 asks for landed this run, and half of it is invisible to every test that can run on this machine: R8 applies `-assumenosideeffects` only when it minifies, and the redacting tree is planted only when `BuildConfig.DEBUG` is false, so a debug build exercises neither. The checklist was written in the same run so the trip is reproducible rather than improvised. Note the standing caveat in the entry: two defects in the checklist's own greps mean a clean capture would currently prove nothing, and the next run fixes them before this is worth doing. The **Gmail app password** above is still the thing everything else waits on — unticked, as always, because ticking is your signal, not the automation's |
 | 2026-09-18 | Close the second Claude session on this working tree | Two streams of work shared one checkout this run, and the visible cost was a wrong conclusion in writing: a failing test was recorded in BUILD-STATUS.md as "a second agent's uncommitted work" that would land separately, when it was in fact this run's own unfinished code and nothing was coming to fix it. That row has been corrected. The older four-failure row from earlier the same day has the same root cause in a different form. `init.sh` has no lock and nothing in the repo can see a peer's edit, so only you can settle this |
 | 2026-09-18 | May an ignore rule name a correspondent who is neither a bank nor a merchant? | Found while auditing the repo for anything traceable to you. Two IBM recruiting addresses sit in `MARKETING_SENDERS` alongside the banks and merchants, seeded from your mailbox like the rest of the list. Nothing is exposed that anyone could act on, and no rule in the project forbids it — which is exactly why the automation will not decide it. **Also worth knowing, and not a blocker:** the last three code defects in the email pipeline were closed this run, so the **Gmail app password** above is now the *only* thing between a green pipeline and a real sync. The rules behind it are no longer merely green — a payment confirmation now reaches the bill whose figure it states, over the window §20.5 actually specifies, and lends that bill no authority of its own. The first real sync will be testing your network and Gmail, not the logic |

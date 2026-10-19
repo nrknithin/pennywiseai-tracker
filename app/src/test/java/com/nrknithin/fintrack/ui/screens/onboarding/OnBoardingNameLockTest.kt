@@ -119,9 +119,10 @@ class OnBoardingNameLockTest {
         every { prefs.userPreferences } returns flowOf(
             UserPreferences(authDisplayName = authDisplayName)
         )
+        // Three arguments, not four: AccountBalanceRepository left the constructor when the
+        // primary-account onboarding step was removed.
         return OnBoardingViewModel(
             prefs,
-            mockk(relaxed = true),
             mockk(relaxed = true),
             mockk<Context>(relaxed = true)
         )

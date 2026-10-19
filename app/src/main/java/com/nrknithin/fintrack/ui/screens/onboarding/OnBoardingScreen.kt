@@ -34,12 +34,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import com.nrknithin.fintrack.ui.effects.overScrollVertical
-import com.nrknithin.fintrack.data.database.entity.AccountBalanceEntity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -73,7 +71,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nrknithin.fintrack.R
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.nrknithin.fintrack.ui.theme.Dimensions
-import com.nrknithin.fintrack.ui.theme.FinTrackText
 import com.nrknithin.fintrack.ui.theme.Spacing
 import com.nrknithin.fintrack.ui.theme.income
 
@@ -97,10 +94,10 @@ fun OnBoardingScreen(
                         OnBoardingStep.WELCOME -> viewModel.goToNextStep()
                         OnBoardingStep.PROFILE -> viewModel.goToNextStep()
                         OnBoardingStep.PERMISSIONS -> viewModel.goToNextStep()
-                        OnBoardingStep.SMS_SCAN -> viewModel.goToNextStep()
-                        OnBoardingStep.ACCOUNT_SETUP -> {
+                        // Terminal step: Continue finishes onboarding and leaves the
+                        // scan running in WorkManager.
+                        OnBoardingStep.SMS_SCAN ->
                             viewModel.completeOnboarding(onOnboardingComplete)
-                        }
                     }
                 },
                 onSkip = {
@@ -109,10 +106,8 @@ fun OnBoardingScreen(
                             viewModel.skipSmsPermission()
                             viewModel.goToNextStep()
                         }
-                        OnBoardingStep.SMS_SCAN -> viewModel.goToNextStep()
-                        OnBoardingStep.ACCOUNT_SETUP -> {
+                        OnBoardingStep.SMS_SCAN ->
                             viewModel.completeOnboarding(onOnboardingComplete)
-                        }
                         else -> viewModel.goToNextStep()
                     }
                 },
@@ -147,10 +142,6 @@ fun OnBoardingScreen(
                     onPermissionResult = { viewModel.onSmsPermissionResult(it) }
                 )
                 OnBoardingStep.SMS_SCAN -> SmsScanStep(uiState = uiState)
-                OnBoardingStep.ACCOUNT_SETUP -> AccountSetupStep(
-                    uiState = uiState,
-                    onSelectAccount = { viewModel.selectAccount(it) }
-                )
             }
         }
     }
@@ -599,6 +590,19 @@ private fun SmsScanStep(uiState: OnBoardingUiState) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                Spacer(modifier = Modifier.height(Spacing.lg))
+
+                // The point of the whole change: without this the progress bar still reads
+                // as something to wait for, and the Finish button looks like it would
+                // cancel the scan.
+                Text(
+                    text = "You can finish now — this keeps running in the background, " +
+                        "and transactions will keep appearing on your home screen.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             } else {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(Spacing.sm))
@@ -673,142 +677,6 @@ private fun SmsScanStep(uiState: OnBoardingUiState) {
 }
 
 @Composable
-private fun AccountSetupStep(
-    uiState: OnBoardingUiState,
-    onSelectAccount: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .overScrollVertical()
-            .verticalScroll(rememberScrollState())
-            .padding(Spacing.lg),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(Spacing.xl))
-
-        if (uiState.accounts.isEmpty()) {
-            Icon(
-                imageVector = Icons.Filled.AccountBalance,
-                contentDescription = null,
-                modifier = Modifier.size(Dimensions.Icon.emptyStateContainer),
-                tint = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(Spacing.lg))
-
-            Text(
-                text = "You're all set!",
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(Spacing.md))
-
-            Text(
-                text = "No accounts were detected yet. You can set up your main account later in Settings.",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            Text(
-                text = "Select Your Main Account",
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(Spacing.md))
-
-            Text(
-                text = "Choose the account you use most often. This will be shown on your home screen.",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(Spacing.lg))
-
-            uiState.accounts.forEach { account ->
-                val accountKey = "${account.bankName}_${account.accountLast4}"
-                val isSelected = uiState.selectedAccountKey == accountKey
-
-                // The muted "on" colour has to follow the container. Selecting a
-                // row swaps its fill to primaryContainer, and onSurfaceVariant —
-                // a colour paired with `surface` — then sat on it at almost no
-                // contrast, making the masked digits vanish on the selected row.
-                val mutedColor = if (isSelected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer.copy(
-                        alpha = Dimensions.Alpha.subtitle
-                    )
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                }
-
-                Card(
-                    onClick = { onSelectAccount(accountKey) },
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected)
-                            MaterialTheme.colorScheme.primaryContainer
-                        else
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    border = if (isSelected) BorderStroke(
-                        Spacing.xxs,
-                        MaterialTheme.colorScheme.primary
-                    ) else null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = Spacing.xs)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(Spacing.md)
-                            .defaultMinSize(minHeight = Dimensions.Component.minTouchTarget),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
-                        ) {
-                            Text(
-                                text = account.bankName,
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                            // Mobile-money wallets have no account number.
-                            if (account.accountLast4 != AccountBalanceEntity.WALLET_ACCOUNT_MARKER) {
-                                Text(
-                                    text = "****${account.accountLast4}",
-                                    style = FinTrackText.amountSmall,
-                                    color = mutedColor
-                                )
-                            }
-                        }
-                        Text(
-                            text = "${account.currency} ${account.balance}",
-                            style = FinTrackText.amountRow
-                        )
-                        if (isSelected) {
-                            Spacer(modifier = Modifier.width(Spacing.sm))
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Selected",
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(Dimensions.Icon.inline)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun StepIndicator(
     currentStep: OnBoardingStep,
     modifier: Modifier = Modifier
@@ -848,7 +716,9 @@ private fun OnBoardingBottomBar(
     onStartScan: () -> Unit
 ) {
     val isFirstStep = uiState.currentStep == OnBoardingStep.WELCOME
-    val canGoBack = !isFirstStep && !uiState.isScanning
+    // Back stays available during the scan. It was disabled because leaving the step used
+    // to abandon a scan the next step depended on; neither is true now.
+    val canGoBack = !isFirstStep && !uiState.isCompleting
 
     // Keep the controls above the system navigation bar under edge-to-edge (#563):
     // the Scaffold's bottomBar slot doesn't apply navigation-bar insets on its own,
@@ -914,6 +784,10 @@ private fun OnBoardingBottomBar(
                     }
                 }
 
+                // The scan never gates this step. It runs in WorkManager under unique
+                // work, so it survives leaving onboarding, the app being backgrounded and
+                // the process being killed — waiting for it bought nothing. On a mailbox
+                // of ~8,900 messages it is minutes of staring at a progress bar.
                 OnBoardingStep.SMS_SCAN -> {
                     if (!uiState.isScanning && !uiState.scanCompleted) {
                         TextButton(onClick = onSkip) {
@@ -922,43 +796,22 @@ private fun OnBoardingBottomBar(
                         Button(onClick = onStartScan) {
                             Text("Start Scanning")
                         }
-                    } else if (uiState.isScanning) {
-                        TextButton(onClick = onSkip) {
-                            Text("Skip")
-                        }
-                    } else if (uiState.scanCompleted) {
-                        Button(onClick = onNext) {
-                            Text("Continue")
-                        }
-                    }
-                }
-
-                OnBoardingStep.ACCOUNT_SETUP -> {
-                    if (uiState.accounts.isEmpty()) {
-                        Button(onClick = onNext) {
-                            Text("Finish")
-                        }
                     } else {
-                        if (uiState.selectedAccountKey == null) {
-                            TextButton(onClick = onSkip) {
-                                Text("Skip")
-                            }
-                        }
-                        Button(
-                            onClick = onNext,
-                            enabled = uiState.selectedAccountKey != null || uiState.accounts.isEmpty()
-                        ) {
+                        Button(onClick = onNext) {
                             if (uiState.isCompleting) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(Dimensions.Icon.medium),
                                     strokeWidth = 2.dp
                                 )
                             } else {
+                                // "Finish" and not "Continue": this is the last step now,
+                                // and while scanning it must not imply the scan is done.
                                 Text("Finish")
                             }
                         }
                     }
                 }
+
             }
         }
     }

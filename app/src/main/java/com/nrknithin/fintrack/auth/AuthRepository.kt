@@ -31,7 +31,10 @@ class AuthRepository @Inject constructor(
     suspend fun signIn(activity: Activity): AuthResult {
         val result = authGateway.signIn(activity)
         if (result is AuthResult.Success) {
-            userPreferencesRepository.applyGoogleIdentity(result.identity.displayName)
+            userPreferencesRepository.applyGoogleIdentity(
+                displayName = result.identity.displayName,
+                accountKey = result.identity.accountKey
+            )
         }
         return result
     }

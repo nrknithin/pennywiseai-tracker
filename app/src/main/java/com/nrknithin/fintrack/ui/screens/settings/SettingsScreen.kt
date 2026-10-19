@@ -45,7 +45,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nrknithin.fintrack.core.Constants
 import com.nrknithin.fintrack.ui.components.CustomTitleTopAppBar
-import com.nrknithin.fintrack.ui.components.SupportDevelopmentDialog
 import com.nrknithin.fintrack.ui.components.cards.GroupedColumn
 import com.nrknithin.fintrack.ui.components.cards.GroupedList
 import com.nrknithin.fintrack.ui.components.cards.GroupedRow
@@ -141,16 +140,10 @@ fun SettingsScreen(
     val accounts by settingsViewModel.accounts.collectAsStateWithLifecycle()
     val mainAccountKey by settingsViewModel.mainAccountKey.collectAsStateWithLifecycle()
     val useContactsForVpa by settingsViewModel.useContactsForVpa.collectAsStateWithLifecycle(initialValue = false)
-    val isProEntitled by settingsViewModel.isProEntitled.collectAsStateWithLifecycle()
     val scheduledFolderBackupEnabled by settingsViewModel.scheduledFolderBackupEnabled.collectAsStateWithLifecycle(initialValue = false)
     val scheduledFolderBackupLastTimestamp by settingsViewModel.scheduledFolderBackupLastTimestamp.collectAsStateWithLifecycle(initialValue = null)
     val requestFolderPicker by settingsViewModel.requestFolderPicker.collectAsStateWithLifecycle()
-    var showUpgradeSheet by remember { mutableStateOf(false) }
-    var showSupportDialog by remember { mutableStateOf(false) }
     var showSignOutDialog by remember { mutableStateOf(false) }
-    // F-Droid builds have no Play billing, so they show a "Support development"
-    // tip jar instead of the (un-buyable) Pro upsell. Play builds keep Pro.
-    val isFdroidBuild = com.nrknithin.fintrack.BuildConfig.IS_FDROID_BUILD
     // Launches the runtime permission request. If granted, we flip the
     // preference on; if denied, leave the switch off so the user can try
     // again without us silently turning the feature on later.
@@ -252,46 +245,12 @@ fun SettingsScreen(
                 .padding(Dimensions.Padding.content),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
-            // ── FinTrack Pro / Support development ──
-            // Top of Settings on purpose: highest-discoverability slot.
-            // F-Droid builds have no Play billing (everything is already
-            // unlocked), so instead of an un-buyable Pro upsell they get a
-            // "Support development" tip jar. Play builds keep the Pro upgrade.
-            if (isFdroidBuild) {
-                SectionHeaderV2(title = stringResource(R.string.support_title))
-                SettingsGroup {
-                    SettingsNavItem(
-                        icon = Icons.Default.Favorite,
-                        iconBgColor = yellow_light,
-                        iconTint = yellow_dark,
-                        title = stringResource(R.string.support_title),
-                        subtitle = stringResource(R.string.support_subtitle),
-                        onClick = { showSupportDialog = true },
-                        position = ListItemPosition.Single,
-                    )
-                }
-            } else {
-                // Row content adapts to entitlement state — paid users see
-                // "Active" so the row reads as status, free users see "Upgrade"
-                // so it reads as a call-to-action.
-                SectionHeaderV2(title = "FinTrack Pro")
-                SettingsGroup {
-                    SettingsNavItem(
-                        icon = Icons.Default.AutoAwesome,
-                        iconBgColor = yellow_light,
-                        iconTint = yellow_dark,
-                        title = if (isProEntitled) "FinTrack Pro" else "Upgrade to FinTrack Pro",
-                        subtitle = if (isProEntitled) {
-                            "Active · all power features unlocked"
-                        } else {
-                            "Unlimited rules, statements, exports, and more"
-                        },
-                        onClick = { showUpgradeSheet = true },
-                        position = ListItemPosition.Single,
-                    )
-                }
-            }
-
+            // REMOVED: the "FinTrack Pro" / "Support development" section that sat at the
+            // top of Settings. There is no Pro tier in this fork — it is one person's
+            // private build, every feature is on, and nothing is for sale. A row saying
+            // "Active · all power features unlocked" is just as wrong as one saying
+            // "Upgrade": both describe a tier that does not exist. It is FinTrack.
+            //
             // ── Account ──
             // Only rendered on a build that actually has a sign-in gate, and only once a
             // Google account has been adopted. Without it a wrong-account choice would be
@@ -625,21 +584,12 @@ fun SettingsScreen(
                     title = "Automatic Folder Backup",
                     subtitle = if (scheduledFolderBackupEnabled) {
                         "Daily backup at 2:00 AM to your chosen folder"
-                    } else if (!isProEntitled) {
-                        "Pro · Save a backup to a folder every day at 2:00 AM"
                     } else {
                         "Save a backup to a folder every day at 2:00 AM"
                     },
                     checked = scheduledFolderBackupEnabled,
-                    // Scheduling daily backups is a Pro feature. Turning it ON while
-                    // free routes to the paywall; turning it OFF is always allowed so
-                    // a lapsed/downgraded user can still stop scheduled backups.
                     onCheckedChange = { enabled ->
-                        if (enabled && !isProEntitled) {
-                            showUpgradeSheet = true
-                        } else {
-                            settingsViewModel.setScheduledFolderBackupEnabled(enabled)
-                        }
+                        settingsViewModel.setScheduledFolderBackupEnabled(enabled)
                     },
                     position = ListItemPosition.Middle
                 )
@@ -1361,15 +1311,6 @@ fun SettingsScreen(
         )
     }
 
-    if (showUpgradeSheet) {
-        com.nrknithin.fintrack.presentation.paywall.UpgradeSheet(
-            onDismiss = { showUpgradeSheet = false },
-        )
-    }
-
-    if (showSupportDialog) {
-        SupportDevelopmentDialog(onDismiss = { showSupportDialog = false })
-    }
 }
 
 // ── Reusable Settings Components ──

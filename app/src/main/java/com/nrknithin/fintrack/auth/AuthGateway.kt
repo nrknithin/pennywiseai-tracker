@@ -15,7 +15,14 @@ import android.app.Activity
  */
 data class GoogleIdentity(
     val displayName: String?,
-    val idToken: String
+    val idToken: String,
+    /**
+     * SHA-256 hex of the Google account id, computed in the gateway so the raw id — which
+     * is the account's email address — never crosses this boundary. Used only to tell one
+     * account from another, so a new account starts at onboarding. Empty when the gateway
+     * could not produce one.
+     */
+    val accountKey: String = ""
 ) {
     /**
      * Overridden so the generated one cannot interpolate a live Google ID token. Nothing
