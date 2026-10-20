@@ -26,4 +26,3 @@ rootProject.name = "FinTrack"
 include(":app")
 include(":parser-core")
 include(":shared")
-include(":iosApp")

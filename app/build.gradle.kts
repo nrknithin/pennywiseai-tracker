@@ -162,6 +162,13 @@ android {
             // Allow JVM unit tests to exercise code that touches android.util.Log
             // and other Android framework stubs without Robolectric.
             isReturnDefaultValues = true
+
+            all {
+                // Gradle's default test heap is 512 MB. Test workers are separate JVMs
+                // that inherit nothing from gradle.properties, so a larger suite can die
+                // while writing its results. Give each worker 2 GB.
+                it.maxHeapSize = "2g"
+            }
         }
     }
     lint {
