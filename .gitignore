@@ -104,3 +104,20 @@ iosApp/fastlane/report.xml
 
 # git worktrees (superpowers SDD)
 .worktrees/
+
+# Signing config and Firebase credentials. Owner-only files that live outside
+# the repo; the patterns are deliberately unanchored so a root copy and an app/
+# copy are both ignored.
+keystore.properties
+google-services.json
+secrets.properties
+
+# Build specification for the Fin fork - derived from a personal mailbox,
+# so it stays local (see CLAUDE.md hard constraint 4: no PII in the repo).
+spec/
+
+# Local credential files. The Gmail app password is a live credential for a real
+# mailbox and must never reach the history.
+.env
+.env.*
+!.env.example
