@@ -17,7 +17,7 @@
     <string name="txn_export_action_cancel">ยกเลิก</string>
     <string name="txn_export_action_export">ส่งออก</string>
     <string name="txn_export_action_done">เสร็จสิ้น</string>
-    <string name="txn_export_share_subject">ส่งออกธุรกรรม PennyWise</string>
+    <string name="txn_export_share_subject">ส่งออกธุรกรรม FinTrack</string>
     <string name="txn_export_share_chooser_title">แชร์ CSV</string>
     <string name="txn_export_action_share">แชร์</string>
     <string name="txn_export_action_close">ปิด</string>

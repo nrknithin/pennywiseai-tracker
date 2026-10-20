@@ -2,7 +2,7 @@ import Shared
 import SwiftUI
 
 struct AddEditTransactionView: View {
-    let facade: PennyWiseSharedFacade
+    let facade: FinTrackSharedFacade
     var editingTransactionId: Int64? = nil
     var onSave: (() -> Void)?
 

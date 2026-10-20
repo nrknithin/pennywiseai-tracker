@@ -22,7 +22,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "pennywiseai-tracker"
+rootProject.name = "FinTrack"
 include(":app")
 include(":parser-core")
 include(":shared")

@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -26,7 +26,7 @@ class PriorbankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("12.90"),
                     currency = "BYN",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "KFC Zavod",
                     accountLast4 = "6666",
                     balance = BigDecimal("947.09")
@@ -41,7 +41,7 @@ class PriorbankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("19.98"),
                     currency = "BYN",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "AZS N55",
                     accountLast4 = "6666",
                     balance = BigDecimal("997.86")
@@ -56,7 +56,7 @@ class PriorbankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("8.00"),
                     currency = "BYN",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "MOBILE BANK",
                     accountLast4 = "6666",
                     balance = BigDecimal("250.70")

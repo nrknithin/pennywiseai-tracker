@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -26,7 +26,7 @@ class BankOfIndiaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("500"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "Cash Deposit",
                     accountLast4 = "5468",
                     balance = BigDecimal("20100.81")
@@ -41,7 +41,7 @@ class BankOfIndiaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("500"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "Cash Deposit",
                     accountLast4 = "5468",
                     balance = BigDecimal("15000.50")
@@ -56,7 +56,7 @@ class BankOfIndiaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("200.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "SAI MISAL",
                     accountLast4 = "5468",
                     reference = "315439383341"
@@ -71,7 +71,7 @@ class BankOfIndiaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("15000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "HDFC MUTUAL F",
                     accountLast4 = "5468",
                     balance = BigDecimal("18679.91")

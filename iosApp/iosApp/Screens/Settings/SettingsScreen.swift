@@ -56,7 +56,7 @@ struct SettingsScreen: View {
 
             Section("Data Management") {
                 NavigationLink {
-                    CategoriesScreen(facade: PennyWiseSharedFacade.companion.shared)
+                    CategoriesScreen(facade: FinTrackSharedFacade.companion.shared)
                 } label: {
                     Label {
                         VStack(alignment: .leading, spacing: AppSpacing.xs) {

@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BANK_DIR = "parser-core/src/main/kotlin/com/pennywiseai/parser/core/bank/";
+const BANK_DIR = "parser-core/src/main/kotlin/com/nrknithin/fintrack/parser/core/bank/";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // A parser fixed this long after it first landed is real post-launch breakage —

@@ -2,7 +2,7 @@ import Foundation
 import Shared
 
 class HomeViewModel: ObservableObject {
-    let facade = PennyWiseSharedFacade.companion.shared
+    let facade = FinTrackSharedFacade.companion.shared
 
     @Published var categories: [String] = []
     @Published var recentTransactions: [SharedRecentTransactionItem] = []

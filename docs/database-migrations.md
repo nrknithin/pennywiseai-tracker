@@ -1,10 +1,10 @@
 # Database Migrations Guide
 
-PennyWise's Room database stands at version 58 (`SCHEMA_VERSION`, 23 entities). Every migration, auto or manual, is defined in one file: `app/src/main/java/com/pennywiseai/tracker/data/database/PennyWiseDatabase.kt`. Start there when you touch the schema; this doc explains how that file is organized and which rules keep upgrades safe.
+FinTrack's Room database stands at version 58 (`SCHEMA_VERSION`, 23 entities). Every migration, auto or manual, is defined in one file: `app/src/main/java/com/nrknithin/fintrack/data/database/FinTrackDatabase.kt`. Start there when you touch the schema; this doc explains how that file is organized and which rules keep upgrades safe.
 
 ## The one rule: ALL_MIGRATIONS
 
-Manual migrations register in a single shared array at the bottom of `PennyWiseDatabase.kt`:
+Manual migrations register in a single shared array at the bottom of `FinTrackDatabase.kt`:
 
 ```kotlin
 val ALL_MIGRATIONS: Array<Migration> = arrayOf(
@@ -42,10 +42,10 @@ Two quirks worth knowing:
 
 ## Adding a migration: checklist
 
-1. Bump `SCHEMA_VERSION` at the top of `PennyWiseDatabase.kt`. It's a top-level constant so non-Room code like `BackupExporter` can stamp backups with the same number.
+1. Bump `SCHEMA_VERSION` at the top of `FinTrackDatabase.kt`. It's a top-level constant so non-Room code like `BackupExporter` can stamp backups with the same number.
 2. Make your entity changes.
 3. Additive change: add an `AutoMigration` entry (plus spec if ambiguous). Anything else: write the `Migration` object **and** register it in `ALL_MIGRATIONS`.
-4. Build once. KSP exports `app/schemas/com.pennywiseai.tracker.data.database.PennyWiseDatabase/<version>.json` automatically (the `room.schemaLocation` arg lives in `app/build.gradle.kts`). Commit the JSON.
+4. Build once. KSP exports `app/schemas/com.nrknithin.fintrack.data.database.FinTrackDatabase/<version>.json` automatically (the `room.schemaLocation` arg lives in `app/build.gradle.kts`). Commit the JSON.
 5. Test the upgrade against a real pre-change database if you touched existing rows.
 6. Verify a fresh install still works — migrations only run on existing database files.
 

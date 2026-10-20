@@ -10,7 +10,7 @@ plugins {
 }
 
 android {
-    namespace = "com.pennywiseai.tracker"
+    namespace = "com.nrknithin.fintrack"
     compileSdk = 37
     
     buildFeatures {
@@ -18,7 +18,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.pennywiseai.tracker"
+        applicationId = "com.nrknithin.fintrack"
         minSdk = 26
         targetSdk = 36
         versionCode = 104
@@ -46,21 +46,20 @@ android {
     }
 
     signingConfigs {
-        // Only create signing config for non-F-Droid builds
-        if (!gradle.startParameter.taskNames.any { it.contains("fdroid", ignoreCase = true) }) {
-            val localPropertiesFile = rootProject.file("local.properties")
-            if (localPropertiesFile.exists()) {
-                create("release") {
-                    val localProperties = Properties()
-                    localProperties.load(localPropertiesFile.inputStream())
-                    
-                    val keystorePath = localProperties.getProperty("RELEASE_STORE_FILE", "")
-                    if (keystorePath.isNotEmpty()) {
-                        storeFile = file(keystorePath)
-                        storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD", "")
-                        keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS", "")
-                        keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD", "")
-                    }
+        // Optional dedicated keystore for every flavor; without one, release builds
+        // fall back to the debug key (see buildTypes.release).
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            create("release") {
+                val localProperties = Properties()
+                localProperties.load(localPropertiesFile.inputStream())
+
+                val keystorePath = localProperties.getProperty("RELEASE_STORE_FILE", "")
+                if (keystorePath.isNotEmpty()) {
+                    storeFile = file(keystorePath)
+                    storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD", "")
+                    keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS", "")
+                    keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD", "")
                 }
             }
         }
@@ -109,7 +108,8 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            // No applicationIdSuffix: this is a personal, unpublished build, so debug and
+            // release are the same app (com.nrknithin.fintrack) on the device.
             versionNameSuffix = "-debug"
             // en-XA / ar-XB pseudo-locales: untranslated (hardcoded) text stands
             // out as plain English, and RTL layout bugs show up without a translation.
@@ -123,18 +123,12 @@ android {
                 "proguard-rules.pro"
             )
             
-            // Only apply signing config to standard flavor
-            for (flavor in productFlavors) {
-                if (flavor.name == "standard") {
-                    // Check if release signing config exists
-                    val releaseSigningConfig = signingConfigs.findByName("release")
-                    // Only use release signing if keystore is configured
-                    if (releaseSigningConfig != null && releaseSigningConfig.storeFile != null) {
-                        signingConfig = releaseSigningConfig
-                    }
-                }
-            }
-            
+            // Personal build: sign every flavor so the release APK installs as-is. Uses the
+            // keystore from local.properties when configured, otherwise the local debug key
+            // (which also lets a release install over a debug build in place).
+            signingConfig = signingConfigs.findByName("release")?.takeIf { it.storeFile != null }
+                ?: signingConfigs.getByName("debug")
+
             // Include debug symbols for native crashes
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
@@ -142,7 +136,7 @@ android {
         }
     }
     // Lists every values-<lang>/ folder as a supported locale, so Android 13+
-    // shows PennyWise under System settings → App languages.
+    // shows FinTrack under System settings → App languages.
     androidResources {
         generateLocaleConfig = true
     }

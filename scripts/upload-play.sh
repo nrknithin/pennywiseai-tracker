@@ -41,7 +41,7 @@ for arg in "$@"; do
   esac
 done
 
-PACKAGE="com.pennywiseai.tracker"
+PACKAGE="com.nrknithin.fintrack"
 JSON_KEY="${PLAY_JSON_KEY:-secrets/play-store-key.json}"
 TRACK="${PLAY_TRACK:-production}"
 STATUS="${PLAY_STATUS:-draft}"

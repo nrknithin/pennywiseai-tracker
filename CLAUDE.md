@@ -1,9 +1,14 @@
-# PennyWise — Agent Guide
+# FinTrack — Agent Guide
 
-PennyWise is a privacy-first, AI-powered expense tracker that extracts
+FinTrack is a privacy-first, AI-powered expense tracker that extracts
 transactions from bank SMS **entirely on-device**. The primary app is Android
 (Jetpack Compose + Material 3); the repo also contains a Kotlin Multiplatform
 `shared` module, an `iosApp`, and a `pennywise-web` frontend.
+
+FinTrack is a personal fork of PennyWise AI (`com.nrknithin.fintrack`). A few
+identifiers deliberately keep the old name: the backup format tag
+(`"PennyWise Backup v1…"`, so upstream backups still restore), the database
+file names, and the tip-the-developer strings (the payee is the upstream author).
 
 **This file is a router, not a manual.** Read the linked topic doc when a task
 touches its area. Everything under **Hard Constraints** is non-negotiable.
@@ -69,7 +74,7 @@ part of the gate — don't use them to verify.
   Android deps) · `shared` (KMP) · `iosApp` · `pennywise-web`.
 - **UI:** Material You dynamic color (Android 12+), full light/dark with semantic
   color roles, 8dp grid, Material 3 type scale. All screens use
-  `PennyWiseScaffold` for consistent system-bar / TopAppBar handling. Always
+  `FinTrackScaffold` for consistent system-bar / TopAppBar handling. Always
   check both light and dark themes.
 - **Versioning:** SemVer (MAJOR breaking / MINOR features / PATCH fixes). The
   live version is in `app/build.gradle.kts`.
@@ -91,7 +96,16 @@ part of the gate — don't use them to verify.
 `parser-author` (write/fix a parser end-to-end) · `parser-triage` (assess a
 fresh `[BANK]` issue).
 
-## Releasing
+## Installing (this fork)
+FinTrack is never published. The owner runs the **F-Droid flavor release build**
+(everything unlocked, no Play Billing): `./gradlew :app:assembleFdroidRelease`,
+then `adb install -r --user 0 app/build/outputs/apk/fdroid/release/app-fdroid-release.apk`.
+Every build type uses `com.nrknithin.fintrack` (no `.debug` suffix). Release
+builds are signed with the `RELEASE_*` keystore from `local.properties` if set,
+otherwise the local debug key — so the upstream release flow below, which
+expects an unsigned F-Droid APK, no longer applies as-is.
+
+## Releasing (upstream flow)
 For a routine release: merge the PRs, then — from an up-to-date `main` with a
 clean tree — run `./scripts/release.sh patch|minor|major --yes` (preview first
 with `--dry-run`). It commits/tags the current branch and pushes `main`, so the

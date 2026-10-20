@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -29,7 +29,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("150.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "john.doe123@okbank",
                     reference = "987654321098",
                     isFromCard = false
@@ -43,7 +43,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("450.75"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Swiggy",
                     reference = "876543210987",
                     isFromCard = false
@@ -57,7 +57,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("3500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Indigo",
                     reference = "987654321099",
                     isFromCard = false
@@ -71,7 +71,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1250.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "merchant.store.98765@hdfcbank",
                     reference = "765432109876",
                     isFromCard = false
@@ -86,7 +86,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("3500.50"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "IMPS Credit",
                     accountLast4 = "4567",
                     balance = BigDecimal("25000.75"),
@@ -103,7 +103,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("10509.09"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "TESTUSER",
                     accountLast4 = "1896",
                     isFromCard = false
@@ -117,7 +117,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("50000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "SAMPLE PERSON",
                     accountLast4 = "1896",
                     isFromCard = false
@@ -131,7 +131,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("17179.95"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "Bank Transfer",
                     accountLast4 = "1896",
                     isFromCard = false
@@ -145,7 +145,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("15000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "IMPS Credit",
                     accountLast4 = "7890",
                     balance = BigDecimal("42500.80"),
@@ -162,7 +162,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("199.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Netflix via e-mandate ID: NX789XYZABC",
                     accountLast4 = "3456",
                     isFromCard = true
@@ -176,7 +176,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("119.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Spotify via e-mandate ID: SP456DEF123",
                     accountLast4 = "7890",
                     isFromCard = true
@@ -190,7 +190,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("2500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "LifeInsurance via e-mandate ID: LI789GHI456",
                     accountLast4 = "1234",
                     isFromCard = true
@@ -205,7 +205,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1200.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.CREDIT,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.CREDIT,
                     merchant = "AMAZON",
                     accountLast4 = "5678",
                     creditLimit = BigDecimal("38000.00"),
@@ -220,7 +220,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("882.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.CREDIT,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.CREDIT,
                     merchant = "Carnatic Cafe Gurgaon In",
                     isFromCard = true
                 )
@@ -233,7 +233,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("2351.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.CREDIT,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.CREDIT,
                     merchant = "Amazon",
                     isFromCard = true
                 )
@@ -246,7 +246,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "MERCHANT",
                     accountLast4 = "3456",
                     balance = BigDecimal("250.75"),
@@ -291,7 +291,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("5000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "Cash Deposit",
                     accountLast4 = "1234",
                     balance = BigDecimal("25000.00"),
@@ -306,7 +306,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1100"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "Cash Deposit",
                     accountLast4 = "3223",
                     balance = BigDecimal("1181.90"),
@@ -322,7 +322,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal.ZERO,
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.BALANCE_UPDATE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.BALANCE_UPDATE,
                     merchant = "Balance Inquiry",
                     accountLast4 = "1234",
                     balance = BigDecimal("15000.50"),
@@ -346,7 +346,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("6000"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Jerry",
                     reference = "FDRLM4175007432",
                     accountLast4 = "3343",
@@ -371,7 +371,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1500"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Cash Withdrawal",
                     balance = BigDecimal("7517.94"),
                     isFromCard = false
@@ -386,7 +386,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("123"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     accountLast4 = "1234",
                     balance = BigDecimal("1234.56"),
                     isFromCard = false
@@ -472,7 +472,7 @@ class FederalBankParserTest {
         val message =
             "Dear Customer, Rs.123 credited to your A/c XX1234 on 01JAN2026 12:00:00. BAL-Rs.1234.56-Federal Bank"
         val cases = listOf("AX-FEDSMS-S", "AD-FEDSMS-S").map { sender ->
-            com.pennywiseai.parser.core.test.SimpleTestCase(
+            com.nrknithin.fintrack.parser.core.test.SimpleTestCase(
                 bankName = "Federal Bank",
                 sender = sender,
                 currency = "INR",
@@ -480,7 +480,7 @@ class FederalBankParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("123"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     accountLast4 = "1234",
                     balance = BigDecimal("1234.56"),
                     isFromCard = false

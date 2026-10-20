@@ -1,8 +1,8 @@
-package com.pennywiseai.parser.core.bank
+package com.nrknithin.fintrack.parser.core.bank
 
-import com.pennywiseai.parser.core.test.ExpectedTransaction
-import com.pennywiseai.parser.core.test.ParserTestCase
-import com.pennywiseai.parser.core.test.ParserTestUtils
+import com.nrknithin.fintrack.parser.core.test.ExpectedTransaction
+import com.nrknithin.fintrack.parser.core.test.ParserTestCase
+import com.nrknithin.fintrack.parser.core.test.ParserTestUtils
 import org.junit.jupiter.api.*
 import java.math.BigDecimal
 
@@ -26,7 +26,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("29"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "Loan Recovery Fo",
                     accountLast4 = "5494",
                     balance = BigDecimal("24898.57"),
@@ -41,7 +41,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     merchant = "John Smith",
                     accountLast4 = "1234",
                     balance = BigDecimal("15000.00"),
@@ -57,7 +57,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("80.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.EXPENSE,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.EXPENSE,
                     accountLast4 = "3456",
                     balance = BigDecimal("1234.56"),
                     reference = "52211012345",
@@ -73,7 +73,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "UPI Payment",
                     accountLast4 = "9012",
                     balance = BigDecimal("5678.90"),
@@ -89,7 +89,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "merchant",
                     accountLast4 = "5678",
                     balance = BigDecimal("10000.00"),
@@ -106,7 +106,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("2500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "JOHN DOE",
                     accountLast4 = "6789",
                     balance = BigDecimal("25000.00"),
@@ -123,7 +123,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("10000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     merchant = "Cash Deposit",
                     accountLast4 = "4567",
                     balance = BigDecimal("45000.00"),
@@ -139,7 +139,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("1500.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.CREDIT,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.CREDIT,
                     merchant = null,
                     accountLast4 = "1234",
                     creditLimit = BigDecimal("42981.46"),
@@ -154,7 +154,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("250.50"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.CREDIT,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.CREDIT,
                     accountLast4 = "5678",
                     isFromCard = true
                 )
@@ -168,7 +168,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("70.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     accountLast4 = "7654",
                     balance = BigDecimal("5000.00"),
                     isFromCard = false
@@ -183,7 +183,7 @@ class BankOfBarodaParserTest {
                 expected = ExpectedTransaction(
                     amount = BigDecimal("5000.00"),
                     currency = "INR",
-                    type = com.pennywiseai.parser.core.TransactionType.INCOME,
+                    type = com.nrknithin.fintrack.parser.core.TransactionType.INCOME,
                     accountLast4 = "2233",
                     balance = BigDecimal("12345.67"),
                     isFromCard = false

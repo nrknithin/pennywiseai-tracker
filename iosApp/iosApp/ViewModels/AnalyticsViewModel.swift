@@ -92,7 +92,7 @@ struct AnalyticsSummaryData {
 }
 
 class AnalyticsViewModel: ObservableObject {
-    private let facade = PennyWiseSharedFacade.companion.shared
+    private let facade = FinTrackSharedFacade.companion.shared
 
     @Published var selectedPeriod: AnalyticsPeriod = .thisMonth
     @Published var selectedTypeFilter: AnalyticsTypeFilter = .all

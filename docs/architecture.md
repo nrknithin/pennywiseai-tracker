@@ -1,7 +1,7 @@
-# PennyWise Architecture Guide
+# FinTrack Architecture Guide
 
 ## Overview
-PennyWise follows modern Android architecture guidelines with MVVM pattern, Clean Architecture principles, and Unidirectional Data Flow (UDF).
+FinTrack follows modern Android architecture guidelines with MVVM pattern, Clean Architecture principles, and Unidirectional Data Flow (UDF).
 
 ## Core Architectural Principles
 
@@ -95,7 +95,7 @@ message to every candidate parser by content — see
 ## Module Structure
 ```
 app/
-├── src/main/java/com/pennywiseai/tracker/
+├── src/main/java/com/nrknithin/fintrack/
 │   ├── presentation/            # Feature screens + ViewModels (home, accounts,
 │   │   │                        #   add, transactions, budgetgroups, categories,
 │   │   │                        #   subscriptions, loans, groups, paywall, share,

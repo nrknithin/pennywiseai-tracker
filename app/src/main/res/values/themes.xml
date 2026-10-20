@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base theme -->
-    <style name="Theme.Pennywisecompose" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.FinTrack" parent="android:Theme.Material.Light.NoActionBar" />
 
     <!-- Transparent host theme for QuickCategoryPickerActivity: a Compose
          bottom-sheet floats over whatever's behind it, no window decor,
          no background dim (the ModalBottomSheet draws its own scrim). -->
-    <style name="Theme.PennyWise.Transparent" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.FinTrack.Transparent" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowContentOverlay">@null</item>
@@ -16,7 +16,7 @@
 
 
     <!-- Splash Screen theme for light mode -->
-    <style name="Theme.PennyWise.SplashScreen" parent="Theme.SplashScreen">
+    <style name="Theme.FinTrack.SplashScreen" parent="Theme.SplashScreen">
         <!-- Set the background color -->
         <item name="windowSplashScreenBackground">#FFFFFF</item>
         
@@ -27,6 +27,6 @@
         <item name="windowSplashScreenAnimationDuration">1000</item>
         
         <!-- Set the theme to use after splash screen -->
-        <item name="postSplashScreenTheme">@style/Theme.Pennywisecompose</item>
+        <item name="postSplashScreenTheme">@style/Theme.FinTrack</item>
     </style>
 </resources>

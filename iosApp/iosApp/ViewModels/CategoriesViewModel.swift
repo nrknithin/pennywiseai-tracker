@@ -2,12 +2,12 @@ import Foundation
 import Shared
 
 class CategoriesViewModel: ObservableObject {
-    let facade: PennyWiseSharedFacade
+    let facade: FinTrackSharedFacade
 
     @Published var categories: [SharedCategoryItem] = []
     @Published var errorMessage: String?
 
-    init(facade: PennyWiseSharedFacade) {
+    init(facade: FinTrackSharedFacade) {
         self.facade = facade
     }
 

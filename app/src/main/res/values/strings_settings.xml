@@ -9,10 +9,10 @@
     <string name="settings_action_ok">OK</string>
     <string name="settings_action_done">Done</string>
 
-    <!-- PennyWise Pro -->
-    <string name="settings_pro_section">PennyWise Pro</string>
-    <string name="settings_pro_title_active">PennyWise Pro</string>
-    <string name="settings_pro_title_upgrade">Upgrade to PennyWise Pro</string>
+    <!-- FinTrack Pro -->
+    <string name="settings_pro_section">FinTrack Pro</string>
+    <string name="settings_pro_title_active">FinTrack Pro</string>
+    <string name="settings_pro_title_upgrade">Upgrade to FinTrack Pro</string>
     <string name="settings_pro_subtitle_active">Active · all power features unlocked</string>
     <string name="settings_pro_subtitle_upgrade">Unlimited rules, statements, exports, and more</string>
 
@@ -53,6 +53,14 @@
     <string name="settings_budget_cycle_title">Budget Cycle Start Day</string>
     <string name="settings_budget_cycle_subtitle">Shifts the start of each monthly budget period; e.g. 25 means your cycle runs 25th → 24th</string>
     <string name="settings_budget_cycle_dialog_body">Pick the day each monthly budget cycle starts. e.g. 25 means the cycle runs from the 25th through the 24th of the next month.</string>
+    <string name="settings_budget_cycle_last_working_day">Last working day</string>
+    <string name="settings_budget_cycle_last_working_day_hint">Payday on the last Monday–Friday of the month, earlier if that day is a payday holiday</string>
+    <string name="settings_payday_holidays_title">Payday holidays</string>
+    <string name="settings_payday_holidays_subtitle">Bank holidays that move a last-working-day payday earlier</string>
+    <string name="settings_payday_holidays_empty">No holidays added. Weekends are skipped automatically.</string>
+    <string name="settings_payday_holidays_add">Add holiday</string>
+    <!-- %1$s = holiday date -->
+    <string name="settings_payday_holidays_remove_cd">Remove %1$s</string>
 
     <!-- Contacts -->
     <string name="settings_contacts_section">Contacts</string>
@@ -106,8 +114,12 @@
     <string name="settings_change_backup_folder_subtitle">Pick a different folder for automatic backups</string>
     <string name="settings_import_data_title">Import Data</string>
     <string name="settings_import_data_subtitle">Restore data from backup</string>
+    <string name="settings_import_mode_title">Import backup</string>
+    <string name="settings_import_mode_body">Merge adds what\'s new and keeps everything already in FinTrack. Replace deletes FinTrack\'s current data and restores this backup exactly.</string>
+    <string name="settings_import_mode_merge">Merge</string>
+    <string name="settings_import_mode_replace">Replace everything</string>
     <string name="settings_import_csv_title">Import Transactions (CSV)</string>
-    <string name="settings_import_csv_subtitle">Import from a PennyWise CSV export</string>
+    <string name="settings_import_csv_subtitle">Import from a FinTrack CSV export</string>
     <string name="settings_import_statement_title">Import Statement</string>
     <string name="settings_import_statement_subtitle">Import from GPay, PhonePe, Paytm</string>
     <string name="settings_unrecognized_sms_title">Unrecognized SMS</string>
@@ -200,7 +212,7 @@
     <string name="settings_save_backup_choose">Choose how you want to save it:</string>
     <string name="settings_save_backup_to_files">Save to Files</string>
     <string name="settings_save_backup_share">Share</string>
-    <string name="settings_share_backup_subject">PennyWise Backup</string>
+    <string name="settings_share_backup_subject">FinTrack Backup</string>
     <string name="settings_share_backup_chooser">Share Backup</string>
 
     <!-- Notifications -->
@@ -231,7 +243,7 @@
     <string name="settings_ai_cancel_download">Cancel Download</string>
     <string name="settings_ai_info">Chat with AI about your expenses and get financial insights. All conversations stay private on your device.</string>
     <string name="settings_ai_download_notification_title">AI Chat Model</string>
-    <string name="settings_ai_download_notification_description">Downloading AI chat assistant for PennyWise</string>
+    <string name="settings_ai_download_notification_description">Downloading AI chat assistant for FinTrack</string>
 
     <!-- Developer -->
     <string name="settings_developer_section">Developer</string>
@@ -245,7 +257,7 @@
     <string name="settings_report_issue_title">Report an Issue</string>
     <string name="settings_report_issue_subtitle">Submit bug reports on GitHub</string>
     <!-- %1$s = app version, e.g. 2.18.0 -->
-    <string name="settings_app_version">PennyWise v%1$s</string>
+    <string name="settings_app_version">FinTrack v%1$s</string>
 
     <!-- ══ Appearance screen ══ -->
     <string name="appearance_title">Appearance</string>

@@ -3,7 +3,7 @@
     <!-- ══ Home screen ══ -->
     <string name="home_transaction_deleted">Транзакция удалена</string>
     <string name="home_undo">Отменить</string>
-    <string name="home_upgrade_pro">Обновить до PennyWise Pro</string>
+    <string name="home_upgrade_pro">Обновить до FinTrack Pro</string>
     <string name="home_profile_filter">Фильтр профиля</string>
     <string name="home_more_options">Больше опций</string>
     <string name="home_view_all">Показать всё</string>

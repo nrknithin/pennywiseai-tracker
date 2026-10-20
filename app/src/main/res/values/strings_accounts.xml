@@ -226,6 +226,96 @@
     <string name="manage_accounts_read_only">Read-only</string>
     <string name="manage_accounts_account_balance_label">Account Balance</string>
 
+    <!-- ══ Balance enquiry by missed call ══ -->
+    <string name="account_balance_enquiry_title">Check balance by missed call</string>
+    <!-- %1$s = bank name -->
+    <string name="account_balance_enquiry_body">Call from the mobile number registered with %1$s. The bank hangs up and texts your balance, and FinTrack updates this account from that SMS.</string>
+    <!-- %1$s = phone number -->
+    <string name="account_balance_enquiry_call">Call %1$s</string>
+    <!-- %1$s = SBI Quick registration number -->
+    <string name="account_balance_enquiry_sbi_note">First time? Register for SBI Quick by sending REG followed by your account number to %1$s.</string>
+
+    <!-- ══ Bank loans (EMI loans from banks, separate from lending) ══ -->
+    <string name="loans_tab_bank">Bank loans</string>
+    <string name="loans_tab_lending">Lending</string>
+    <string name="bank_loans_empty_title">No bank loans yet</string>
+    <string name="bank_loans_empty_description">Add a loan you repay in EMIs — a personal, home or vehicle loan, or EMIs on a credit card — to track what\'s left and when it ends.</string>
+    <string name="bank_loans_add">Add loan</string>
+    <string name="bank_loans_total_outstanding">Outstanding</string>
+    <string name="bank_loans_total_emi">EMIs each month</string>
+    <string name="bank_loans_section_closed">Closed</string>
+    <!-- %1$d = EMIs paid, %2$d = total EMIs -->
+    <string name="bank_loan_emis_progress">%1$d of %2$d EMIs paid</string>
+    <!-- %1$s = amount, %2$s = date -->
+    <string name="bank_loan_next_emi">Next EMI %1$s on %2$s</string>
+    <string name="bank_loan_paid_off">Paid off</string>
+    <string name="bank_loan_closed">Closed</string>
+    <string name="bank_loan_needs_terms">Add the principal and rate or tenure to see the schedule</string>
+    <string name="bank_loan_type_personal">Personal loan</string>
+    <string name="bank_loan_type_home">Home loan</string>
+    <string name="bank_loan_type_vehicle">Vehicle loan</string>
+    <string name="bank_loan_type_education">Education loan</string>
+    <string name="bank_loan_type_card_emi">Credit card EMI</string>
+    <string name="bank_loan_type_gold">Gold loan</string>
+    <string name="bank_loan_type_other">Other loan</string>
+
+    <!-- Detail -->
+    <string name="bank_loan_detail_outstanding">Outstanding principal</string>
+    <string name="bank_loan_detail_next_emi">Next EMI</string>
+    <string name="bank_loan_detail_ends">Last EMI</string>
+    <string name="bank_loan_detail_interest_left">Interest still to pay</string>
+    <string name="bank_loan_detail_gst_left">GST on interest still to pay</string>
+    <string name="bank_loan_detail_emi">EMI</string>
+    <string name="bank_loan_detail_rate">Interest rate</string>
+    <!-- %1$s = annual rate, e.g. 18 -->
+    <string name="bank_loan_detail_rate_value">%1$s%% a year</string>
+    <string name="bank_loan_detail_principal">Principal</string>
+    <string name="bank_loan_detail_account">Paid from</string>
+    <string name="bank_loan_detail_schedule">Schedule</string>
+    <string name="bank_loan_detail_schedule_due">Due</string>
+    <string name="bank_loan_detail_schedule_interest">Interest</string>
+    <string name="bank_loan_detail_schedule_principal">Principal</string>
+    <string name="bank_loan_detail_schedule_balance">Balance</string>
+    <!-- %1$s = GST amount -->
+    <string name="bank_loan_detail_schedule_gst">+ GST %1$s</string>
+    <!-- %1$s = amount, %2$s = date -->
+    <string name="bank_loan_detail_statement_note">Balance set from statement: %1$s on %2$s</string>
+    <string name="bank_loan_action_edit">Edit</string>
+    <string name="bank_loan_action_update_statement">Update from statement</string>
+    <string name="bank_loan_action_close">Close loan</string>
+    <string name="bank_loan_action_reopen">Reopen loan</string>
+    <string name="bank_loan_action_delete">Delete</string>
+    <string name="bank_loan_delete_title">Delete this loan?</string>
+    <string name="bank_loan_delete_message">The loan and its EMI reminder are removed. Transactions are not affected.</string>
+    <string name="bank_loan_close_message">Closing stops tracking the loan and ends its EMI reminder. Close it when it\'s paid off early or moved to another lender.</string>
+    <string name="bank_loan_statement_title">Update from statement</string>
+    <string name="bank_loan_statement_body">Enter the principal outstanding shown on your latest statement. The schedule continues from it at the next EMI.</string>
+    <string name="bank_loan_statement_amount">Outstanding principal</string>
+    <string name="bank_loan_statement_date">As of</string>
+
+    <!-- Edit -->
+    <string name="bank_loan_add_title">Add bank loan</string>
+    <string name="bank_loan_edit_title">Edit bank loan</string>
+    <string name="bank_loan_field_name">Name</string>
+    <string name="bank_loan_field_name_hint">e.g. Car loan</string>
+    <string name="bank_loan_field_lender">Lender</string>
+    <string name="bank_loan_field_type">Type</string>
+    <string name="bank_loan_field_emi">EMI amount</string>
+    <string name="bank_loan_field_principal">Principal (amount borrowed)</string>
+    <string name="bank_loan_field_rate">Interest rate (% a year)</string>
+    <string name="bank_loan_field_tenure">Tenure (months)</string>
+    <string name="bank_loan_field_first_emi">First EMI date</string>
+    <string name="bank_loan_field_gst">GST on interest (%)</string>
+    <string name="bank_loan_field_gst_hint">Card EMIs in India charge 18% GST on the interest</string>
+    <string name="bank_loan_field_account">Paid from</string>
+    <string name="bank_loan_field_account_none">Not set</string>
+    <string name="bank_loan_terms_help">Fill in any three of EMI, principal, rate and tenure — the fourth is worked out.</string>
+    <!-- %1$s = EMI, %2$s = rate, %3$d = months, %4$s = principal -->
+    <string name="bank_loan_terms_resolved">EMI %1$s · %2$s%% a year · %3$d months · principal %4$s</string>
+    <string name="bank_loan_terms_unresolved">Not enough to work out the schedule yet — it will show next EMI dates only.</string>
+    <string name="bank_loan_save">Save</string>
+    <string name="bank_loan_error_required">Enter a name and either an EMI amount or enough terms to work it out.</string>
+
     <!-- ══ Loans list ══ -->
     <string name="loans_title">Loans</string>
     <string name="loans_empty_title">No loans yet</string>
